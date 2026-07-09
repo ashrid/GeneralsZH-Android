@@ -716,6 +716,21 @@ void ModuleFactory::addModuleAlias( const AsciiString& existingName, const Ascii
 	NameKeyType existingKey = makeDecoratedNameKey(existingName, type);
 	NameKeyType aliasKey = makeDecoratedNameKey(aliasName, type);
 
+	// GeneralsX @bugfix Claude 10/07/2026 F13: reject empty alias name (would register a
+	// useless alias for the empty-string key — never intentional).
+	if (aliasName.isEmpty())
+	{
+		DEBUG_CRASH(("addModuleAlias: empty alias name"));
+		return;
+	}
+	// GeneralsX @bugfix Claude 10/07/2026 F12: reject self-alias — it resolves to itself and
+	// wastes every findModuleTemplate lookup with MAX_ALIAS_HOPS iterations.
+	if (aliasKey == existingKey)
+	{
+		DEBUG_CRASH(("addModuleAlias: alias '%s' identical to existing name", aliasName.str()));
+		return;
+	}
+
 	// Don't register a dead link to a name nothing defines.
 	ModuleTemplateMap::const_iterator it = m_moduleTemplateMap.find(existingKey);
 	if (it == m_moduleTemplateMap.end())

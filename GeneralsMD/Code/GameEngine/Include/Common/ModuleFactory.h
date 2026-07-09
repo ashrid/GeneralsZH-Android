@@ -72,6 +72,9 @@ public:
 
 	virtual void init() override;
 	virtual void reset() override { }					///< We don't reset during the lifetime of the app
+	// GeneralsX @tweak Claude 10/07/2026 F14: m_aliasMap is intentionally NOT cleared here —
+	// reset() is a no-op by design (alias lifetime = app lifetime). If reset() ever gains real
+	// teardown semantics, clear m_aliasMap too. Tracked as Task 9 (ModManager) debt.
 	virtual void update() override { }					///< As of now, we don't have a need for an update
 
 	Module *newModule( Thing *thing, const AsciiString& name, const ModuleData* data, ModuleType type );  ///< allocate a new module
