@@ -610,6 +610,17 @@ const ModuleFactory::ModuleTemplate* ModuleFactory::findModuleTemplate(const Asc
 {
 	NameKeyType namekey = makeDecoratedNameKey(name, type);
 
+	// GeneralsX @feature Claude 09/07/2026 resolve alias chain before template lookup (plan D5).
+	// Bounded to MAX_ALIAS_HOPS so a malformed circular alias can't loop forever.
+	const Int MAX_ALIAS_HOPS = 8;
+	for (Int hop = 0; hop < MAX_ALIAS_HOPS; ++hop)
+	{
+		AliasMap::const_iterator a = m_aliasMap.find(namekey);
+		if (a == m_aliasMap.end())
+			break;
+		namekey = a->second;
+	}
+
   ModuleTemplateMap::const_iterator it = m_moduleTemplateMap.find(namekey);
   if (it == m_moduleTemplateMap.end())
 	{
@@ -693,6 +704,27 @@ void ModuleFactory::addModuleInternal( NewModuleProc proc, NewModuleDataProc dat
 	mtm.m_createProc = proc;
 	mtm.m_createDataProc = dataproc;
 	mtm.m_whichInterfaces = whichIntf;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** GeneralsX @feature Claude 09/07/2026 Register an alias name resolving to an existing
+  * module template (plan D5). Stored as aliasKey -> existingKey and consulted in
+  * findModuleTemplate. Dead links (existingName not registered) are caught in DEBUG. */
+//-------------------------------------------------------------------------------------------------
+void ModuleFactory::addModuleAlias( const AsciiString& existingName, const AsciiString& aliasName, ModuleType type )
+{
+	NameKeyType existingKey = makeDecoratedNameKey(existingName, type);
+	NameKeyType aliasKey = makeDecoratedNameKey(aliasName, type);
+
+	// Don't register a dead link to a name nothing defines.
+	ModuleTemplateMap::const_iterator it = m_moduleTemplateMap.find(existingKey);
+	if (it == m_moduleTemplateMap.end())
+	{
+		DEBUG_CRASH(("addModuleAlias: existing module '%s' not registered", existingName.str()));
+		return;
+	}
+
+	m_aliasMap[aliasKey] = existingKey;
 }
 
 //-------------------------------------------------------------------------------------------------

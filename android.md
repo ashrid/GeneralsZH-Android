@@ -579,3 +579,121 @@ definition and reference use the exact same string.
 | `GeneralsMD/Code/Main/SDL3Main.cpp` | Android entry point, VFS, env vars, font extraction |
 | `GeneralsMD/Code/Main/CMakeLists.txt` | Android libmain.so, -llog, -landroid |
 | `GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp` | Touch event dispatch (SAGE_MOBILE), diagnostics |
+
+---
+
+## 10. Mod Support (2026-07-09)
+
+**Status: code complete, on-device verification PENDING.** The `-mod` argv injection,
+the POSIX path-separator fix, and the ModuleFactory alias seam are implemented and
+committed-tree-ready, but the build loop (Task 3) and logcat matrix (Task 4) have NOT
+run — the WSL toolchain (NDK r27, meson) was not provisioned in the session that wrote
+this. Every claim below about code structure is verifiable from source; every claim
+about runtime behavior is PENDING and must be confirmed by the logcat matrix before
+this section is considered authoritative. See `docs/superpowers/plans/2026-07-08-android-mod-architecture.md`.
+
+### 10.1 How a mod is selected at launch (precedence)
+
+The engine already supported `-mod <path>` on desktop. On Android there is no command
+line, so `GeneralsMD/Code/Main/SDL3Main.cpp` (inside `main()`, immediately before
+`CommandLine::parseCommandLineForStartup()`, under `#if defined(__ANDROID__)`) resolves
+a mod path from two sources, in this order:
+
+1. **Intent extra `"mod"`** (per-launch, explicit) — read via JNI:
+   `SDL_GetAndroidJNIEnv()` → `SDL_GetAndroidActivity()` → `getIntent()` →
+   `getStringExtra("mod")`. Used by launcher apps and `adb shell am start --es "mod" <path>`.
+2. **`GameData/mod.txt`** (persistent default) — `fopen("mod.txt","r")` relative to CWD,
+   which is already GameData after the chdir block (~`SDL3Main.cpp:317-337`). One line:
+   the absolute mod path. Trailing `\r\n`, spaces, tabs are trimmed (Windows-edited files).
+
+If neither yields a path, or the path fails `access(path, R_OK)`, the game launches
+vanilla with a logcat warning. The resolved path is injected as `-mod <path>` into
+`__argv`/`__argc` and consumed later by `parseCommandLineForEngineInit()` → `parseMod()`.
+
+### 10.2 Static-buffer lifetime rule (do not regress)
+
+The mod path buffer and the rebuilt argv are **`static`**, not stack/heap:
+
+```cpp
+static char modPathBuf[512];     // pointer escapes into __argv
+static char* modArgv[64];        // __argv is reassigned to point at this
+static char modFlag[] = "-mod";
+```
+
+`parseMod()` dereferences `__argv` at `GameEngine::init` — long after the injection
+block exits. A stack buffer would dangle; `realloc` is wrong (`__argv` is `main()`'s
+argv, not heap). This mirrors the existing `-xres`/`-yres` static-buffer injection
+later in the same file. **Do not convert these to non-static storage.** This was the
+v1 plan's review-killing defect (dangling pointer).
+
+### 10.3 Engine bug: POSIX path separator in `parseMod()`
+
+`parseMod()` (`GeneralsMD` and `Generals` `CommandLine.cpp`) appended `\` to mod
+directory paths with no trailing separator. On Android/POSIX, a `\`-terminated path
+breaks `loadBigFilesFromDirectory`'s `opendir`. Fixed behind `#ifdef _WIN32`:
+
+```cpp
+if (!modPath.endsWith("\\") && !modPath.endsWith("/")) {
+#ifdef _WIN32
+    modPath.concat('\\');
+#else
+    modPath.concat('/');   // POSIX — opendir needs a forward slash
+#endif
+}
+```
+
+Applied to **both** games per the backport rule (base Generals shares this code path
+via `INI.big`).
+
+### 10.4 Loose-file contract (the non-obvious one)
+
+**Loose files in the mod directory do NOT resolve via `LocalFileSystem` — on any
+platform.** `m_modDir` is consumed only by `loadMods()` (loads `*.big` via
+`loadBigFilesFromDirectory`), the video players (stubbed on Android), and `Win32Mouse`
+cursors (not compiled on Android). Nothing registers the mod dir with generic file
+resolution.
+
+Therefore a mod like Xenoforce that ships loose `Art/` and `Data/` folders must have
+those **merged into the GameData tree** (`GameData/Art/`, `GameData/Data/`) to take
+effect. Loose files in GameData win over every archive (resolution priority 1).
+Trade-off: loose overrides are NOT switched by `mod.txt` — removing the mod means
+deleting the merged files. Engine-level loose-file resolution from the mod dir is
+deferred backlog item D8 (see plan §Phase 2 Task 13 / D8a).
+
+### 10.5 ModuleFactory alias seam (plan D5)
+
+`ModuleFactory` (GeneralsMD) gained `addModuleAlias(existingName, aliasName, type)` and
+an `m_aliasMap`. `findModuleTemplate()` consults the alias map before the template map,
+with an 8-hop bound against circular aliases. This lets a mod refer to an existing
+module type by an alternative name without recompilation. **GeneralsMD only** — Zero
+Hour is the sole Android target. Note: `m_aliasMap` is not cleared by `reset()`/`init()`
+(both are no-ops by design); the ModManager (plan Task 9) must add alias teardown on
+mod unload or stale aliases from a previous mod will corrupt resolution.
+
+### 10.6 Install workflow — Option C (archives + loose files)
+
+```bash
+BASE=/sdcard/Android/data/me.generalsx.zh/files/GameData
+adb shell mkdir -p $BASE/Mods/Xenoforce
+# .big archives -> mod dir (switchable via mod.txt)
+adb push 15Xeno.big      $BASE/Mods/Xenoforce/
+adb push 15PacthXeno.big $BASE/Mods/Xenoforce/
+# Loose overrides -> merged into GameData tree (always active while present)
+adb push Art/  $BASE/Art/
+adb push Data/ $BASE/Data/
+# Set the persistent default
+adb shell "echo '$BASE/Mods/Xenoforce' > $BASE/mod.txt"
+# Or per-launch override (wins over mod.txt):
+adb shell am start -n me.generalsx.zh/.GameActivity --es "mod" "$BASE/Mods/Xenoforce"
+```
+
+### 10.7 Verification matrix — PENDING
+
+The 7-scenario logcat matrix (plan Task 4) has NOT been run. When the toolchain is
+provisioned and the APK built/installed, verify: (1) vanilla launch has no "Mod path"
+lines; (2) `mod.txt` produces `Mod path from mod.txt:` + `Injected -mod`; (3) Intent
+extra produces `Mod path from Intent extra:`; (4) Intent wins over `mod.txt`
+(precedence); (5) invalid path logs `Mod path not accessible, ignoring` and launches
+vanilla; (6) CRLF `mod.txt` is trimmed correctly; (7) loose override in `GameData/Art/`
+wins over archive content. Run with `adb logcat -G 16M` first (§6). Until these pass,
+this section documents intent, not verified behavior.

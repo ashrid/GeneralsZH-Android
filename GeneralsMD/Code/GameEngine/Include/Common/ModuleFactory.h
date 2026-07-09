@@ -81,6 +81,11 @@ public:
 
 	Int findModuleInterfaceMask(const AsciiString& name, ModuleType type);
 
+	// GeneralsX @feature Claude 09/07/2026 Module alias seam (plan D5): register an
+	// alternative name that resolves to an existing module template. Looked up in
+	// findModuleTemplate before the template map; bounded against cycles.
+	void addModuleAlias(const AsciiString& existingName, const AsciiString& aliasName, ModuleType type);
+
 	virtual void crc( Xfer *xfer ) override;
 	virtual void xfer( Xfer *xfer ) override;
 	virtual void loadPostProcess() override;
@@ -115,9 +120,12 @@ protected:
 
 	typedef std::map< NameKeyType, ModuleTemplate, std::less<NameKeyType> > ModuleTemplateMap;
 	typedef std::vector<const ModuleData*> ModuleDataList;
+	// GeneralsX @feature Claude 09/07/2026 aliasName key -> canonical module name key (plan D5)
+	typedef std::map< NameKeyType, NameKeyType, std::less<NameKeyType> > AliasMap;
 
 	ModuleTemplateMap			m_moduleTemplateMap;
 	ModuleDataList				m_moduleDataList;
+	AliasMap                    m_aliasMap;
 
 };
 
