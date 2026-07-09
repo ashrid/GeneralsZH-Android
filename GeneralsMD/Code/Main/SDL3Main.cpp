@@ -704,11 +704,39 @@ int main(int argc, char* argv[])
 								else if (modValue != nullptr)
 								{
 									const char *modPath = env->GetStringUTFChars(modValue, nullptr);
+									// GeneralsX @bugfix Claude 10/07/2026 F21: reject CESU-8 overlong NUL
+									// (\xC0\x80) — Java encodes embedded NUL this way; the kernel rejects the
+									// overlong sequence, so access() would fail opaquely downstream.
+									if (modPath != nullptr && strstr(modPath, "\xC0\x80") != nullptr)
+									{
+										__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
+											"Mod path contains embedded NUL (CESU-8); ignoring");
+										modPath = nullptr;
+									}
 									if (modPath != nullptr && modPath[0] != '\0')
 									{
 										snprintf(modPathBuf, sizeof(modPathBuf), "%s", modPath);
-										__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
-											"Mod path from Intent extra: %s", modPathBuf);
+										// GeneralsX @bugfix Claude 10/07/2026 F7: warn on silent truncation —
+										// a truncated path could prefix-match a different directory.
+										if (strlen(modPathBuf) >= sizeof(modPathBuf) - 2)
+										{
+											__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
+												"Mod path truncated to %zu bytes", sizeof(modPathBuf) - 1);
+										}
+										// GeneralsX @bugfix Claude 10/07/2026 F6: trim trailing whitespace —
+										// mod.txt is trimmed below; the Intent path must match (trailing
+										// space from an adb --es typo would otherwise fail access()).
+										size_t len = strlen(modPathBuf);
+										while (len > 0 && (modPathBuf[len-1] == '\n' || modPathBuf[len-1] == '\r' ||
+										                   modPathBuf[len-1] == ' '  || modPathBuf[len-1] == '\t'))
+										{
+											modPathBuf[--len] = '\0';
+										}
+										if (modPathBuf[0] != '\0')
+										{
+											__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
+												"Mod path from Intent extra: %s", modPathBuf);
+										}
 									}
 									if (modPath != nullptr)
 										env->ReleaseStringUTFChars(modValue, modPath);
@@ -737,15 +765,29 @@ int main(int argc, char* argv[])
 				FILE *modFile = fopen("mod.txt", "r");
 				if (modFile != nullptr)
 				{
-					if (fgets(modPathBuf, sizeof(modPathBuf), modFile) != nullptr)
+				if (fgets(modPathBuf, sizeof(modPathBuf), modFile) != nullptr)
+				{
+					// GeneralsX @bugfix Claude 10/07/2026 F5: strip UTF-8 BOM (\xEF\xBB\xBF) —
+					// Windows Notepad saves it by default; it would corrupt the path prefix and
+					// access() would fail with a garbled, hard-to-diagnose path in logcat.
+					if ((unsigned char)modPathBuf[0] == 0xEF && (unsigned char)modPathBuf[1] == 0xBB
+					    && (unsigned char)modPathBuf[2] == 0xBF)
 					{
-						// Trim trailing whitespace including \r\n — the file may be Windows-edited
-						size_t len = strlen(modPathBuf);
-						while (len > 0 && (modPathBuf[len-1] == '\n' || modPathBuf[len-1] == '\r' ||
-						                   modPathBuf[len-1] == ' '  || modPathBuf[len-1] == '\t'))
-						{
-							modPathBuf[--len] = '\0';
-						}
+						memmove(modPathBuf, modPathBuf + 3, strlen(modPathBuf) - 2);
+					}
+					// GeneralsX @bugfix Claude 10/07/2026 F7: warn on silent truncation.
+					if (strlen(modPathBuf) >= sizeof(modPathBuf) - 2)
+					{
+						__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
+							"Mod path truncated to %zu bytes", sizeof(modPathBuf) - 1);
+					}
+					// Trim trailing whitespace including \r\n — the file may be Windows-edited
+					size_t len = strlen(modPathBuf);
+					while (len > 0 && (modPathBuf[len-1] == '\n' || modPathBuf[len-1] == '\r' ||
+					                   modPathBuf[len-1] == ' '  || modPathBuf[len-1] == '\t'))
+					{
+						modPathBuf[--len] = '\0';
+					}
 						if (modPathBuf[0] != '\0')
 						{
 							__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
