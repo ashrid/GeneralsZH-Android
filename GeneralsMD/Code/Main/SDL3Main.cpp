@@ -709,9 +709,12 @@ int main(int argc, char* argv[])
 									// overlong sequence, so access() would fail opaquely downstream.
 									if (modPath != nullptr && strstr(modPath, "\xC0\x80") != nullptr)
 									{
-										__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
-											"Mod path contains embedded NUL (CESU-8); ignoring");
-										modPath = nullptr;
+									__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
+										"Mod path contains embedded NUL (CESU-8); ignoring");
+									// GeneralsX @bugfix Claude 10/07/2026 review: release the JNI string
+									// before nulling the pointer, else GetStringUTFChars leaks on this path.
+									env->ReleaseStringUTFChars(modValue, modPath);
+									modPath = nullptr;
 									}
 									if (modPath != nullptr && modPath[0] != '\0')
 									{
