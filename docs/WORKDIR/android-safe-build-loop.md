@@ -19,6 +19,7 @@ Grounded in: `docs/superpowers/specs/2026-07-08-android-mod-support-design.md` (
 | adb | WSL invokes **`adb.exe`** (Windows platform-tools; drivers/server stay on Windows) |
 | Build cadence | Commit-gated: every build corresponds to a git hash |
 | Fix handling | Fix-forward: new commits, never amend |
+| Commits | Via **WSL git** (`wsl bash -lc 'git …'`), never Windows git from PowerShell. Windows git lacks the repo identity (commits fail with "Author identity unknown"), and a failed commit leaves files staged — the next commit then silently mis-bundles them (this is how the AGENTS.md rewrite got swept into the handoff-docs commit on 2026-07-09). If you must commit from Windows, set `git config --global user.name`/`user.email` there first. |
 | Docs | One docs commit per green run, closing the run |
 
 ## One-time setup (do once, in order)
@@ -43,9 +44,9 @@ Grounded in: `docs/superpowers/specs/2026-07-08-android-mod-support-design.md` (
 
 ## Guardrails — `preflight.sh` (runs first, every build)
 
-Fails loud, cites the doc anchor, exits non-zero. Checks:
+Fails loud, cites the doc anchor, exits non-zero. **Scope:** preflight verifies source *invariants*, NOT toolchain presence — a green preflight does not mean the NDK, Meson, or DXVK submodule are installed (those are One-time setup, step 2). If preflight passes but `cmake --preset android-vulkan` fails at configure, suspect the toolchain, not the guardrails. Checks:
 
-1. **Clean tree:** `git status --porcelain` empty (enforces commit-gating). Print the HEAD short-hash that this build will be named after.
+1. **Clean tree:** `git status --porcelain` empty (enforces commit-gating). Print the HEAD short-hash that this build will be named after. *Preflight first resets the DXVK submodule (`git -C references/fbraz3-dxvk checkout -- .`) because `cmake/dx8.cmake` applies `Patches/dxvk-android.patch` at configure time, dirtying the submodule after every build; the next configure re-applies the patch idempotently, so discarding the applied state here is safe. No-op if the submodule is uninitialized.*
 2. **DXVK strip protection:** `app/build.gradle` still contains the `keepDebugSymbols` entries for `libdxvk_d3d8.so` / `libdxvk_d3d9.so` (stripping ⇒ SIGSEGV; android.md).
 3. **Memory-pool cookie:** `0x47454d53` present in `Core/.../GameMemory.h/.cpp` (do-not-revert; CLAUDE.md).
 4. **Multimap dance intact:** the erase-and-reinsert block and its marker comment present in `Core/GameEngine/Source/Common/System/ArchiveFileSystem.cpp` (~158–183) (android.md §4.2–4.3).
