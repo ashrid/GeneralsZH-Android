@@ -182,8 +182,8 @@ The INI parser throws raw `int` enum values (`INI_INVALID_DATA`, etc.), NOT `std
 ### 9. logcat buffer size
 Default 256KB buffer overflows with verbose engine logging, hiding crash logs. Always `adb logcat -G 16M` before debugging.
 
-### 10. build/android-game vs build/android-vulkan
-The CMake preset is `android-vulkan` (binaryDir: `build/android-vulkan`). The packaging script may reference `build/android-game/`. Reconcile paths when wiring them together.
+### 10. Build directory is build/android-vulkan
+The CMake preset is `android-vulkan` (binaryDir: `build/android-vulkan`). Both the Gradle SDL3 Java srcDir (`android/app/build.gradle`) and `scripts/build/android/package-android-zh.sh` `BUILD_DIR` now point at `build/android-vulkan` (reconciled 2026-07-10, plan Phase 1.5 T1/T2). References to a stale `build/android-game/` in older docs are historical — that was the pre-reconciliation name.
 
 ## Android Build Flags (Non-Default)
 

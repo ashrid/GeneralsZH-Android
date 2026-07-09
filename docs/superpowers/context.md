@@ -49,7 +49,7 @@ Spec and plan are at **v2** (rewritten in place 2026-07-08 after both v1 documen
 
 1. **Task 1:** `parseMod()` POSIX separator fix (GeneralsMD + Generals CommandLine.cpp) → commit
 2. **Task 2:** Mod-path injection block in `SDL3Main.cpp` (complete code is in the plan/spec — use it verbatim) → commit
-3. **Task 3:** Build (`cmake --build build/android-vulkan --target z_generals`) + `bash scripts/build/android/package-android-zh.sh --install` (watch the `BUILD_DIR` mismatch caveat: script expects `build/android-game/`)
+3. **Task 3:** Build (`cmake --build build/android-vulkan --target z_generals`) + `bash scripts/build/android/package-android-zh.sh --install` (BUILD_DIR is `build/android-vulkan`, reconciled with the Gradle SDL3 srcDir)
 4. **Task 4:** 7-scenario on-device verification matrix (vanilla / mod.txt / Intent / precedence / invalid path / CRLF / loose-file workflow) — exact adb commands + expected logcat in the plan. Any deviation → stop and debug, don't proceed
 5. **Task 5:** Docs (android.md mod section with measured results, DEV_BLOG entry, README "Mods" subsection) → commit
 

@@ -56,10 +56,10 @@ parsing → subsystem stores → DXVK device creation → rendering.
 
 ```bash
 # Configure (one-time)
-cmake --preset android-game  # or the equivalent manual configure
+cmake --preset android-vulkan
 
 # Build
-cmake --build build/android-game --target z_generals
+cmake --build build/android-vulkan --target z_generals
 ```
 
 Key build flags:
@@ -69,6 +69,12 @@ Key build flags:
 - `-DRTS_CRASHDUMP_ENABLE=OFF` — no minidump on Android.
 
 ### 3.2 Strip + package the APK
+
+> **Use the automated packager:** `bash scripts/build/android/package-android-zh.sh [--install]`
+> handles strip + staging + align + sign (+ optional install) in one step. The manual
+> zipalign/apksigner flow below is preserved as historical reference for environments
+> without the script; its paths (`build/android-spike`, `build/android-game`,
+> `darwin-x86_64`) reflect the pre-automation state and are **not kept current**.
 
 The APK is assembled from a staging directory at `build/android-spike/apk/`:
 

@@ -35,7 +35,7 @@ This is the **first-ever DXVK build for Android**.
    - **arm64-v8a** architecture (all modern tablets)
    - **Android 7.0+** (API 24+, for system Vulkan support)
    - A **Vulkan-capable GPU** (Adreno 7xx+, Mali-G77+, or equivalent)
-   - **~3GB free RAM** for the game process
+   - **~3GB free RAM** for the game process *(estimate, not yet measured on Android — the DXVK→Vulkan layer and modern high-res displays add overhead over the 2003 game's 128MB target; the iOS port measures ~3GB resident, and Android is expected to be similar. Not a memory leak.)*
    - **~2.5GB storage** for game data
 
 2. **A legal copy of C&C Generals Zero Hour**:
@@ -132,8 +132,8 @@ cd GeneralsZH-Android
 git submodule update --init references/fbraz3-dxvk
 
 # Configure + build the native engine (arm64-v8a)
-cmake --preset android-game
-cmake --build build/android-game --target z_generals
+cmake --preset android-vulkan
+cmake --build build/android-vulkan --target z_generals
 
 # Package the APK (stages fonts, DXVK .so, SDL3 .so, etc.)
 ./scripts/build/android/package-android-zh.sh
