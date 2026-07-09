@@ -26,9 +26,12 @@ echo "=== preflight: 7 guardrail checks ==="
 # No-op if the submodule is not yet initialized.
 git -C references/fbraz3-dxvk checkout -- . 2>/dev/null || true
 
-# 1. Clean tree + HEAD hash (enforces commit-gating: one build per hash)
-if [[ -n "$(git status --porcelain)" ]]; then
-	fail "git tree not clean — commit-gating requires a clean tree. Run 'git status'."
+# 1. Clean tree + HEAD hash (enforces commit-gating: one build per hash).
+#    Tracked modifications only — untracked files (scratch notes, temp) are tolerated so
+#    they don't block builds. The engine's CMake uses explicit source lists, not globs,
+#    so an untracked file cannot sneak into the compile. Use `git status` to inspect all.
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+	fail "tracked tree not clean — commit-gating requires committed source. Run 'git status' (untracked files are OK)."
 fi
 HEAD_HASH="$(git rev-parse --short HEAD)"
 echo "[1/7] clean tree OK — building HEAD ${HEAD_HASH}"

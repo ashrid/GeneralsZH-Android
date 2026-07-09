@@ -60,10 +60,21 @@ echo "=== adversarial preflight test — baseline HEAD ${ORIG_HEAD:0:9} ==="
 echo "(violations committed/reset locally; nothing reaches origin)"
 echo ""
 
-# --- Check 1: dirty tracked file (uncommitted) must fail "clean tree" ---
+# --- Check 1: dirty tracked file (uncommitted) must fail ---
 echo "violation" >> android.md
-run_pf; expect_fail "check1" "dirty tracked file" "git tree not clean"
+run_pf; expect_fail "check1" "dirty tracked file" "tree not clean"
 git checkout -- android.md
+
+# --- Control: untracked file must NOT fail check1 (check1 relaxed to tracked-only) ---
+echo "scratch note" > _untracked_scratch.tmp
+run_pf
+if [[ ${PF_EXIT} -eq 0 ]]; then
+	RESULTS+=("  PASS  | check1-relax | untracked file tolerated"); PASS=$((PASS+1))
+else
+	RESULTS+=("  WEAK  | check1-relax | untracked file rejected (exit=${PF_EXIT}) — relaxation not working"); WEAK=$((WEAK+1))
+	echo "    >>> preflight output:" >&2; echo "${PF_OUT}" | tail -4 | sed 's/^/        /' >&2
+fi
+rm -f _untracked_scratch.tmp
 
 # --- Control: dirty SUBMODULE only — reset must clean it, check1 must still pass ---
 echo "simulated-patch" >> references/fbraz3-dxvk/RELEASE
