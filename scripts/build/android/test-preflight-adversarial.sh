@@ -113,12 +113,40 @@ run_pf; expect_fail "check5" "new RTS_GENERALS gating" "RTS_GENERALS"
 revert
 rm -f Core/_adversarial_probe.cpp
 
+# GeneralsX @build Claude 10/07/2026 F1: check5's regex must catch ALL gating forms —
+# #ifdef, #ifndef, and the negated #if ! form — not just bare #if RTS_GENERALS.
+printf '// GeneralsX @build adversarial-test 10/07/2026 probe\n#ifdef RTS_GENERALS\nint ifdef_marker = 0;\n#endif\n' > Core/_adversarial_probe_ifdef.cpp
+commit_violation Core/_adversarial_probe_ifdef.cpp
+run_pf; expect_fail "check5" "#ifdef RTS_GENERALS gating" "RTS_GENERALS"
+revert
+rm -f Core/_adversarial_probe_ifdef.cpp
+
+printf '// GeneralsX @build adversarial-test 10/07/2026 probe\n#ifndef RTS_GENERALS\nint ifndef_marker = 0;\n#endif\n' > Core/_adversarial_probe_ifndef.cpp
+commit_violation Core/_adversarial_probe_ifndef.cpp
+run_pf; expect_fail "check5" "#ifndef RTS_GENERALS gating" "RTS_GENERALS"
+revert
+rm -f Core/_adversarial_probe_ifndef.cpp
+
+printf '// GeneralsX @build adversarial-test 10/07/2026 probe\n#if !RTS_GENERALS\nint ifnot_marker = 0;\n#endif\n' > Core/_adversarial_probe_ifnot.cpp
+commit_violation Core/_adversarial_probe_ifnot.cpp
+run_pf; expect_fail "check5" "#if !RTS_GENERALS gating" "RTS_GENERALS"
+revert
+rm -f Core/_adversarial_probe_ifnot.cpp
+
 # --- Check 6: commit a new source file WITHOUT the GeneralsX @ annotation ---
 printf '// no annotation here — should trip check 6\nint no_annotation_violation = 1;\n' > Core/_no_annotation_probe.cpp
 commit_violation Core/_no_annotation_probe.cpp
 run_pf; expect_fail "check6" "source file without annotation" "annotation"
 revert
 rm -f Core/_no_annotation_probe.cpp
+
+# GeneralsX @build Claude 10/07/2026 F3: an unannotated change to an EXISTING annotated
+# file must also fail. The old check6 grepped the whole file (any prior annotation passed);
+# the hardened check6 inspects the diff's added lines, so this append must now trip it.
+echo "int adversarial_existing_file_marker = 0;" >> Core/GameEngine/Source/Common/System/ArchiveFileSystem.cpp
+commit_violation Core/GameEngine/Source/Common/System/ArchiveFileSystem.cpp
+run_pf; expect_fail "check6" "unannotated change in existing file" "annotation"
+revert
 
 # --- Check 7: BUILD_DIR no longer ends in android-vulkan ---
 sed -i 's#BUILD_DIR="${REPO_ROOT}/build/android-vulkan"#BUILD_DIR="${REPO_ROOT}/build/android-game"#' "${PKG}"
