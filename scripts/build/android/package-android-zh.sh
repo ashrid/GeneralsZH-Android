@@ -29,9 +29,9 @@ ANDROID_DIR="${REPO_ROOT}/android"
 APP_DIR="${ANDROID_DIR}/app"
 JNI_LIBS="${APP_DIR}/src/main/jniLibs/${ABI}"
 ASSETS="${APP_DIR}/src/main/assets"
-# GeneralsX @build android-port 07/07/2026 The CMake android-vulkan preset
-# builds into build/android-game/ (the preset name), not build/android-vulkan/.
-BUILD_DIR="${REPO_ROOT}/build/android-game"
+# GeneralsX @build android-port 09/07/2026 The CMake android-vulkan preset
+# builds into build/android-vulkan/ (the preset name per CMakePresets.json:287).
+BUILD_DIR="${REPO_ROOT}/build/android-vulkan"
 
 # ---- 1. Prerequisites ---------------------------------------------------------
 : "${ANDROID_NDK_HOME:=${HOME}/Library/Android/sdk/ndk/27.1.12297006}"
