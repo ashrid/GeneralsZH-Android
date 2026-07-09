@@ -59,9 +59,12 @@ grep -Eq "equal_range\(" "${AFS}" && grep -Eq "\.erase\(" "${AFS}" && grep -Eq "
 	|| fail "multimap erase-and-reinsert override dance missing in ${AFS} — do not simplify (android.md §4.2-4.3)."
 echo "[4/7] multimap dance OK"
 
-# 5. No new base-INI gating (#if RTS_GENERALS) added in HEAD's diff
+# 5. No new base-INI gating (#if RTS_GENERALS) added in HEAD's diff.
+#    Regex anchors #if to the line start (after + and optional indent) so it matches
+#    real preprocessor directives, NOT the text "#if RTS_GENERALS" appearing inside
+#    strings/comments (which caused a false positive on the adversarial-test probe).
 if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-	if git diff HEAD~1 HEAD | grep -E '^\+.*#if.*RTS_GENERALS' >/dev/null; then
+	if git diff HEAD~1 HEAD | grep -E '^\+[[:space:]]*#if[[:space:]]+(defined[[:space:]]*\([[:space:]]*)?RTS_GENERALS([^[:alnum:]_]|$)' >/dev/null; then
 		fail "new '#if RTS_GENERALS' gate added in HEAD — re-gates base-INI definitions (android.md §4.1). Move the definition out of the gate."
 	fi
 	echo "[5/7] no new base-INI gating OK"
