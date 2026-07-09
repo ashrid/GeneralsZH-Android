@@ -663,6 +663,127 @@ int main(int argc, char* argv[])
 		// TheSuperHackers @build felipebraz 10/02/2026 Phase 1.5
 		// Store argc/argv for CommandLine parser to access via _NSGetArgc/_NSGetArgv or /proc/self/cmdline
 		// For now, let CommandLine::parseCommandLineForStartup() handle this
+
+#if defined(__ANDROID__)
+		// GeneralsX @feature Claude 09/07/2026 Android mod support: resolve a mod path from the
+		// "mod" Intent extra (per-launch override) or GameData/mod.txt (persistent default) and
+		// inject "-mod <path>" into __argv. Consumed later by parseCommandLineForEngineInit().
+		{
+			// static: a pointer into this buffer is stored in __argv and dereferenced by
+			// parseMod() at GameEngine::init — long after this block exits. Stack would dangle.
+			static char modPathBuf[512];
+			modPathBuf[0] = '\0';
+
+			// Priority 1: Intent extra (explicit per-launch: launcher apps, adb --es "mod" ...)
+			JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+			if (env != nullptr)
+			{
+				jobject activity = (jobject)SDL_GetAndroidActivity();
+				if (activity != nullptr)
+				{
+					jclass cls = env->GetObjectClass(activity);
+					jmethodID getIntent = (cls != nullptr)
+						? env->GetMethodID(cls, "getIntent", "()Landroid/content/Intent;") : nullptr;
+					if (getIntent != nullptr && !env->ExceptionCheck())
+					{
+						jobject intent = env->CallObjectMethod(activity, getIntent);
+						if (intent != nullptr && !env->ExceptionCheck())
+						{
+							jclass intentCls = env->GetObjectClass(intent);
+							jmethodID getStringExtra = (intentCls != nullptr)
+								? env->GetMethodID(intentCls, "getStringExtra",
+								                   "(Ljava/lang/String;)Ljava/lang/String;") : nullptr;
+							if (getStringExtra != nullptr && !env->ExceptionCheck())
+							{
+								jstring modKey = env->NewStringUTF("mod");
+								jstring modValue = (jstring)env->CallObjectMethod(intent, getStringExtra, modKey);
+								if (env->ExceptionCheck())
+								{
+									env->ExceptionClear();
+								}
+								else if (modValue != nullptr)
+								{
+									const char *modPath = env->GetStringUTFChars(modValue, nullptr);
+									if (modPath != nullptr && modPath[0] != '\0')
+									{
+										snprintf(modPathBuf, sizeof(modPathBuf), "%s", modPath);
+										__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
+											"Mod path from Intent extra: %s", modPathBuf);
+									}
+									if (modPath != nullptr)
+										env->ReleaseStringUTFChars(modValue, modPath);
+									env->DeleteLocalRef(modValue);
+								}
+								if (modKey != nullptr)
+									env->DeleteLocalRef(modKey);
+							}
+							if (intentCls != nullptr)
+								env->DeleteLocalRef(intentCls);
+							env->DeleteLocalRef(intent);
+						}
+						if (env->ExceptionCheck())
+							env->ExceptionClear();
+					}
+					if (env->ExceptionCheck())
+						env->ExceptionClear();
+					if (cls != nullptr)
+						env->DeleteLocalRef(cls);
+				}
+			}
+
+			// Priority 2: mod.txt in GameData (CWD — the chdir above already landed there)
+			if (modPathBuf[0] == '\0')
+			{
+				FILE *modFile = fopen("mod.txt", "r");
+				if (modFile != nullptr)
+				{
+					if (fgets(modPathBuf, sizeof(modPathBuf), modFile) != nullptr)
+					{
+						// Trim trailing whitespace including \r\n — the file may be Windows-edited
+						size_t len = strlen(modPathBuf);
+						while (len > 0 && (modPathBuf[len-1] == '\n' || modPathBuf[len-1] == '\r' ||
+						                   modPathBuf[len-1] == ' '  || modPathBuf[len-1] == '\t'))
+						{
+							modPathBuf[--len] = '\0';
+						}
+						if (modPathBuf[0] != '\0')
+						{
+							__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
+								"Mod path from mod.txt: %s", modPathBuf);
+						}
+					}
+					fclose(modFile);
+				}
+			}
+
+			// Inject "-mod <path>" — static-buffer pattern (NOT realloc: __argv is main()'s argv,
+			// not heap; same pattern as the -xres/-yres static-buffer injection later in this file)
+			if (modPathBuf[0] != '\0')
+			{
+				if (access(modPathBuf, R_OK) == 0)
+				{
+					static char* modArgv[64];
+					static char modFlag[] = "-mod";
+					int n = 0;
+					for (int i = 0; i < __argc && n < 61; ++i)
+						modArgv[n++] = __argv[i];
+					modArgv[n++] = modFlag;
+					modArgv[n++] = modPathBuf;
+					modArgv[n] = nullptr;
+					__argv = modArgv;
+					__argc = n;
+					__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
+						"Injected -mod %s (argc=%d)", modPathBuf, __argc);
+				}
+				else
+				{
+					__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
+						"Mod path not accessible, ignoring: %s", modPathBuf);
+				}
+			}
+		}
+#endif
+
 		CommandLine::parseCommandLineForStartup();
 #if defined(__ANDROID__)
 		__android_log_print(ANDROID_LOG_INFO, "GeneralsX", "init: CommandLine OK (TheGlobalData=%p)", (void*)TheGlobalData);
