@@ -24,6 +24,12 @@ echo "=== preflight: 7 guardrail checks ==="
 # spuriously fail commit-gating below. The patch is reproducible (in Patches/, re-applied
 # by cmake), so discarding the applied state is safe; the next configure re-applies it.
 # No-op if the submodule is not yet initialized.
+# GeneralsX @bugfix Claude 10/07/2026 F9: warn loudly before discarding DXVK submodule
+# local changes. cmake re-applies Patches/dxvk-android.patch idempotently, but a developer
+# may have other in-flight DXVK edits that this reset silently destroys — surface it.
+if [[ -n "$(git -C references/fbraz3-dxvk status --porcelain 2>/dev/null)" ]]; then
+	echo "  NOTE: discarding DXVK submodule local changes (cmake re-applies Patches/dxvk-android.patch on next configure)." >&2
+fi
 git -C references/fbraz3-dxvk checkout -- . 2>/dev/null || true
 
 # 1. Clean tree + HEAD hash (enforces commit-gating: one build per hash).
@@ -62,17 +68,22 @@ grep -Eq "equal_range\(" "${AFS}" && grep -Eq "\.erase\(" "${AFS}" && grep -Eq "
 	|| fail "multimap erase-and-reinsert override dance missing in ${AFS} — do not simplify (android.md §4.2-4.3)."
 echo "[4/7] multimap dance OK"
 
-# 5. No new base-INI gating (#if RTS_GENERALS) added in HEAD's diff.
-#    Regex anchors #if to the line start (after + and optional indent) so it matches
-#    real preprocessor directives, NOT the text "#if RTS_GENERALS" appearing inside
-#    strings/comments (which caused a false positive on the adversarial-test probe).
+# 5. No new base-INI gating added in HEAD's diff. Catches ALL preprocessor forms:
+#    #if / #ifdef / #ifndef, plus the negated #if ! form. Regex anchors to the line
+#    start (after + and optional indent) so it matches real directives, NOT the text
+#    appearing inside strings/comments (which caused a false positive on the probe).
+#    GeneralsX @bugfix Claude 10/07/2026 F1: the old regex only matched bare '#if',
+#    missing #ifdef/#ifndef (already used at ControlBar.cpp:3562,3565) — a new such
+#    gate could reintroduce the FLESHY_SNIPER-class bug (android.md §4.1).
+#    Limitation (F15): HEAD~1 compares against the first parent only; a merge commit's
+#    other parent is not inspected. Initial commit skips (F16).
 if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-	if git diff HEAD~1 HEAD | grep -E '^\+[[:space:]]*#if[[:space:]]+(defined[[:space:]]*\([[:space:]]*)?RTS_GENERALS([^[:alnum:]_]|$)' >/dev/null; then
-		fail "new '#if RTS_GENERALS' gate added in HEAD — re-gates base-INI definitions (android.md §4.1). Move the definition out of the gate."
+	if git diff HEAD~1 HEAD | grep -E '^\+[[:space:]]*#if(def|ndef)?[[:space:]]+(![[:space:]]*)?(defined[[:space:]]*\([[:space:]]*)?RTS_GENERALS([^[:alnum:]_]|$)' >/dev/null; then
+		fail "new RTS_GENERALS gate (#if/#ifdef/#ifndef/#if !) added in HEAD — re-gates base-INI definitions (android.md §4.1). Move the definition out of the gate."
 	fi
 	echo "[5/7] no new base-INI gating OK"
 else
-	echo "[5/7] no parent commit — base-INI gating check skipped (first commit)"
+	echo "[5/7] WARNING: no parent commit — base-INI gating check skipped (initial commit, F16)"
 fi
 
 # 6. GeneralsX @ annotation in every changed source file of HEAD's diff
@@ -82,8 +93,12 @@ if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
 		[[ -z "${f}" ]] && continue
 		case "${f}" in
 			*.cpp|*.h|*.c|*.hpp)
-				if ! git show "HEAD:${f}" 2>/dev/null | grep -q "GeneralsX @"; then
-					echo "  missing annotation: ${f}" >&2
+				# GeneralsX @bugfix Claude 10/07/2026 F3: inspect the diff's ADDED lines,
+				# not the whole file. The old check grepped HEAD:${f}, so a file with any
+				# prior annotation passed even if the new change added none.
+				added="$(git diff HEAD~1 HEAD -- "${f}" | grep -E '^\+[^+]')"
+				if [[ -n "${added}" ]] && ! echo "${added}" | grep -q "GeneralsX @"; then
+					echo "  missing annotation in new lines: ${f}" >&2
 					MISSING=1
 				fi
 				;;
@@ -101,5 +116,12 @@ PKG="scripts/build/android/package-android-zh.sh"
 grep -E '^BUILD_DIR=.*android-vulkan' "${PKG}" >/dev/null \
 	|| fail "BUILD_DIR in ${PKG} must end in android-vulkan (build-loop setup fix)."
 echo "[7/7] packager BUILD_DIR OK"
+
+# 7b. (F10) Gradle SDL3 java srcDir must point at android-vulkan. Protects the F2 fix —
+# both Gradle and the packager must agree on the build dir, else the .cxx fallback masks a
+# mismatch until a fresh checkout fails Java compile.
+grep -E 'build/android-vulkan/[^"]*sdl3-src' "${GRADLE}" >/dev/null \
+	|| fail "Gradle SDL3 java srcDir in ${GRADLE} must point at build/android-vulkan (F2 fix)."
+echo "  gradle SDL3 srcDir OK"
 
 echo "=== preflight PASS — building ${HEAD_HASH} ==="
