@@ -11,7 +11,7 @@
       },
       {
         "name": "fontconfig",
-        "platform": "!windows & !ios"
+        "platform": "!windows & !ios & !android"
       },
       {
         "name": "openal-soft",
