@@ -104,3 +104,6 @@ android/.gradle/
 android/app/src/main/jniLibs/
 android/local.properties
 android/.idea/
+
+## Generated codemap artifacts (codemap skill output; never hand-edited)
+codemap.md
