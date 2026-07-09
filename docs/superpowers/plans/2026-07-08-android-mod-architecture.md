@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Version:** v4
+**Version:** v5
 **Source spec:** `docs/superpowers/specs/2026-07-08-android-mod-support-design.md` (v2)
 **Workflow:** every task runs through `docs/WORKDIR/android-safe-build-loop.md` (preflight → commit-gated build → triage ladder → package → logcat matrix → one human brief → docs-close). Execution environment per `docs/WORKDIR/2026-07-09-wsl-handoff.md`: the WSL tree is authoritative; all builds/packaging/preflight run inside WSL (`wsl.exe -d Ubuntu -e bash -lc '...'`); adb is `adb.exe` (Windows platform-tools).
 
@@ -21,7 +21,8 @@
 | v1 | 18-task / 6-wave architecture plan (ModManager, memory budget, GUI, profiles). **Failed adversarial review:** no task implemented the spec baseline it claimed as its foundation; P5.1 solved an already-solved problem (`file_compat.h` + `_S_IFDIR` define exist at `CommandLine.cpp:44`); Wave 3 dispatched P5.2 concurrently with its dependency P3.1; execution step 1 said "confirm the 4 open questions" although all were marked RESOLVED; GUI/profiles/eviction implemented the spec's declared Non-Goals |
 | v2 | Plan implements the spec v2 baseline only. v1's architecture phases moved to the Deferred Backlog appendix (pruned of the already-solved P5.1, dependency ordering fixed, resolved decisions preserved) |
 | v3 | Aligned with the WSL migration (2026-07-09) and the confirmed safe-build-loop workflow: added Task 0 (remaining one-time setup — toolchain, submodule, packager `BUILD_DIR` fix, `preflight.sh`, adb); Task 3 rewritten to run the build loop (preflight, tee'd commit-named log, triage ladder) and its stale `build/android-game` caveat removed; Task 4 commands switched to `adb.exe`; Task 5 framed as the loop's docs-close commit |
-| v4 (this) | Deferred backlog feasibility study completed (2026-07-09) via 6 parallel explore agents. All 8 items reassessed against actual codebase. D5 rated Trivial (15-35 LOC), D2/D3/D4/D6 rated Practical, D1 rated Hard (greenfield test infra), D7 rated Worth Exploring, D8 split into D8a (cheap ~20-line fallback) and D8b (proper layered resolution). Phase 2 added — Tasks 6-13 pull all feasible items into active plan. User decisions: D1 uses doctest; D7 uses dynamic main-menu button (proven pattern via `updateNotifyButton`); D8a ships first, D8b deferred pending D8a validation. |
+| v4 | Deferred backlog feasibility study completed (2026-07-09) via 6 parallel explore agents. All 8 items reassessed against actual codebase. D5 rated Trivial (15-35 LOC), D2/D3/D4/D6 rated Practical, D1 rated Hard (greenfield test infra), D7 rated Worth Exploring, D8 split into D8a (cheap ~20-line fallback) and D8b (proper layered resolution). Phase 2 added — Tasks 6-13 pull all feasible items into active plan. User decisions: D1 uses doctest; D7 uses dynamic main-menu button (proven pattern via `updateNotifyButton`); D8a ships first, D8b deferred pending D8a validation. |
+| v5 (this) | Adversarial audit (2026-07-10) of the committed baseline (Tasks 0.3/0.4, 1, 2, 6 + preflight hardening `d17b70bbe`–`ab31ec48c` + fontconfig gating `2b3d3b7d4`) via a 4-member hyperplan team — 3 rounds: independent analysis → cross-attack → defend/refine/concede. 40 raw findings → **21 survived (F1–F21)**, 5 withdrawn, 5 verified clean. **Phase 1.5 added** — Tasks T1–T9 remediate the committed baseline before the Task 3 build can succeed. Severity: 1 CRITICAL (preflight check5 regex misses `#ifdef`/`#ifndef`), 3 HIGH (Gradle stale `build/android-game` srcDir, check6 no-op for annotated files, hardcoded `darwin-x86_64` NDK path), 7 MEDIUM, 10 LOW. Lead did NOT write the remediation plan — bundle was handed to the `plan` agent (ses_0b723304). |
 
 ## Why no TDD harness in this plan
 
@@ -65,7 +66,7 @@ In `scripts/build/android/package-android-zh.sh:34` set `BUILD_DIR="${REPO_ROOT}
 
 - [ ] **Step 4: Create `scripts/build/android/preflight.sh`**
 
-Per the workflow spec's Guardrails section — 7 checks: clean tree + HEAD hash, DXVK `keepDebugSymbols` intact, memory-pool cookie `0x47454d53` present, ArchiveFileSystem multimap dance intact, no new base-INI gating in the commit's diff, `GeneralsX @` annotation in every changed source file, packager `BUILD_DIR` ends in `android-vulkan`. Fails loud, cites the doc anchor, exits non-zero.
+Per the workflow spec's Guardrails section — 7 checks: tracked-tree clean (untracked files tolerated — see workflow §Guardrails) + HEAD hash, DXVK `keepDebugSymbols` intact, memory-pool cookie `0x47454d53` present, ArchiveFileSystem multimap dance intact, no new base-INI gating in the commit's diff, `GeneralsX @` annotation in every changed source file, packager `BUILD_DIR` ends in `android-vulkan`. Fails loud, cites the doc anchor, exits non-zero.
 
 - [ ] **Step 5: adb sanity**
 
@@ -384,9 +385,344 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 1. All 7 verification scenarios pass with the exact expected logcat lines / in-game behavior
 2. Xenoforce `.big` content demonstrably active in-game via `mod.txt` alone (no recompile to switch mods)
-3. Vanilla launch is byte-identical in behavior when no mod is configured
+3. Vanilla launch is behavior-preserving when no mod is configured (the injection block still executes JNI calls to probe the Intent extra, but no `-mod` is injected and no game state changes — "byte-identical" was overstated; see audit F20)
 4. Legacy `-mod <path>` on desktop platforms unchanged (no non-Android code paths touched except the `#ifdef`'d separator fix)
 5. android.md, DEV_BLOG, README updated with measured results, not claims
+
+---
+
+## Phase 1.5 — Adversarial Audit Remediation (2026-07-10)
+
+> **GATE:** Tasks T1–T8 must land and T9 must pass **before Task 3 (build) can succeed.** F2 (Gradle srcDir) and F4 (NDK host path) currently break the build/package path on the primary WSL dev platform; F1 (preflight regex) is a guardrail gap that could silently let a regression through.
+
+### Why this section exists
+
+Before building Task 3+ on top of the committed baseline, the executed work was put through a 4-member adversarial hyperplan audit (3 rounds: independent analysis → cross-attack → defend/refine/concede). The Lead orchestrated but did **not** write the remediation plan — the distilled finding bundle was handed to the `plan` agent (ses_0b723304), which owns sequencing, parallelization, and verification gates. This section is that agent's output, verbatim in structure.
+
+### Committed baseline at audit time (all on `main`)
+
+| Task | Commit | Status |
+|------|--------|--------|
+| 0.3 + 0.4 | `1ad4b2c0d` | ✅ committed — audited (preflight, packager BUILD_DIR) |
+| 1 | `93a800398` | ✅ committed — audited (parseMod POSIX separator) |
+| 2 | `5ad15e9ac` | ✅ committed — audited (SDL3Main `-mod` injection) |
+| 6 | `66a7bc903` | ✅ committed — audited (ModuleFactory alias seam) |
+| preflight hardening | `d17b70bbe` … `ab31ec48c` (5 commits) | ✅ committed — audited |
+| fontconfig gating | `2b3d3b7d4` | ✅ committed — audited |
+
+### Audit methodology
+
+4-member adversarial team, each with a distinct lens (hyperplan roster — `deep` omitted; audit is critique, not autonomous implementation):
+
+| Member | Lens | Model |
+|--------|------|-------|
+| logic-auditor | memory safety, object lifetime, JNI ref mgmt, logic correctness | Kimi (max) |
+| spec-subverter | contract violations, comment-vs-code lies, spec flaws | MiMo v2.5-pro |
+| integration-breaker | downstream breakage, caller/callee impact, cross-platform regression | DeepSeek v4-pro |
+| edge-assaulter | input fuzzing — empty/huge/unicode/CRLF/overflow/concurrent | DeepSeek v4-flash |
+
+40 raw findings → cross-attack → defense → **21 survived (F1–F21)**, **5 withdrawn** (attacked successfully), **5 verified clean** (2+ members agree).
+
+### Surviving findings — CRITICAL
+
+| ID | Finding | File:line | Task |
+|----|---------|-----------|------|
+| F1 | preflight check5 regex misses `#ifdef` / `#ifndef` / `#if !` forms of `RTS_GENERALS` gating. `#ifdef RTS_GENERALS` already exists at `ControlBar.cpp:3562,3565` — a new such gate would pass preflight and could reintroduce the FLESHY_SNIPER-class bug (android.md §4.1). Adversarial red-path test only probes `#if RTS_GENERALS`. | `preflight.sh:70` | T7 + T8 |
+
+### Surviving findings — HIGH
+
+| ID | Finding | File:line | Task |
+|----|---------|-----------|------|
+| F2 | Gradle SDL3 Java srcDir points at stale `build/android-game/_deps/sdl3-src/...`. The `.cxx` fallback (lines 120-129) fails on fresh checkout (no `.cxx` before first build) → SDL3 Java sources missing → Java compile error (GameActivity can't find SDLActivity superclass). | `android/app/build.gradle:116` | T1 |
+| F3 | check6 is a no-op for existing annotated files: `git show HEAD:${f} \| grep "GeneralsX @"` searches the whole file, not the diff. `SDL3Main.cpp` has 19 existing annotations → any modification passes check6 without a new annotation. Adversarial test only covers a *new* unannotated file. | `preflight.sh:85` | T7 + T8 |
+| F4 | Packager hardcodes `darwin-x86_64` NDK host path. Line 89 silently skips `libc++_shared.so` on WSL/Linux → missing `.so` → `dlopen` crash at launch. Line 95 `llvm-strip` not found + `set -euo pipefail` → unconditional script abort on the primary dev platform. Line 37 default `ANDROID_NDK_HOME` is macOS-only. | `package-android-zh.sh:89,95` | T2 |
+
+### Surviving findings — MEDIUM
+
+| ID | Finding | File:line | Task |
+|----|---------|-----------|------|
+| F5 | mod.txt UTF-8 BOM not stripped. Windows Notepad saves BOM by default → the most common mod-editing workflow (Windows → Android) fails silently: BOM bytes become path prefix, `access()` fails, logcat shows garbled path. | `SDL3Main.cpp:740` | T6 |
+| F6 | Intent extra path is NOT trimmed, while mod.txt IS (lines 743-748). Same buffer, inconsistent preprocessing based on source. Trailing space kills the mod silently. | `SDL3Main.cpp:706-709` | T6 |
+| F7 | `snprintf` / `fgets` silent truncation at 512 bytes with no warning. A truncated path could accidentally match a different directory prefix. | `SDL3Main.cpp:709,740` | T6 |
+| F8 | Stale `build/android-game` doc references contradict the BUILD_DIR fix. Users following docs hit "No such file or directory". | `android.md`, `README.md`, `AGENTS.md` | T3 |
+| F9 | DXVK submodule reset silently discards the developer's local work (`checkout -- . 2>/dev/null \|\| true`). Legit non-patch DXVK changes vanish with zero feedback. | `preflight.sh:27` | T7 |
+| F10 | check7 validates the packager's BUILD_DIR but not Gradle's — both must stay in sync. | `preflight.sh:101` | T7 |
+| F11 | Trailing backslash on POSIX escapes the Task 1 fix: `!endsWith("\\") && !endsWith("/")` is FALSE for a trailing `\`, so no separator is appended. On POSIX `\` is a literal filename char → `opendir` fails. | `CommandLine.cpp:1091` (both copies) | T4 |
+
+### Surviving findings — LOW
+
+| ID | Finding | File:line | Task |
+|----|---------|-----------|------|
+| F12 | Self-alias (`aliasKey == existingKey`) accepted — wastes 8 lookup iterations every resolution. | `ModuleFactory.cpp:714` (both copies) | T5 |
+| F13 | Empty `aliasName` accepted — registers an alias for the empty-string key. | `ModuleFactory.cpp:714` (both copies) | T5 |
+| F14 | `m_aliasMap` never cleared by `reset()` (intentionally a no-op). Stale aliases from a previously-loaded mod persist within a session. Documented debt for the Task 9 ModManager teardown. | `ModuleFactory.h:74` | T5 (debt doc) |
+| F15 | preflight merge-commit blind spot: `HEAD~1` compares against first parent only. | `preflight.sh:69` | T7 (comment) |
+| F16 | preflight initial-commit bypass: check5 skipped when HEAD has no parent. | `preflight.sh:65-76` | T7 (comment) |
+| F17 | Stale adversarial-test header comment (still says check1 rejects untracked files). | `test-preflight-adversarial.sh:1-12` | T8 |
+| F18 | Hardcoded `\\` in `FFmpegVideoPlayer`/`BinkVideoPlayer`/`Win32Mouse` modDir paths — same root cause as Task 1, but dead code on Android (stubbed/not compiled). Latent if ever un-stubbed. | (3 files) | doc only |
+| F19 | check1 relaxation (now tolerates untracked files via `--untracked-files=no`) is undocumented in this plan — Success Criteria still says "clean tree". | `plan` §Success Criteria | T3 |
+| F20 | "byte-identical" vanilla contract overstated — the Task 2 block executes JNI calls even in vanilla mode. Behavior is unchanged but the wording is imprecise. | `plan` §Success Criteria #3 | T3 |
+| F21 | CESU-8 overlong NUL (`\xC0\x80`) from JNI unguarded — Java embedded NUL encodes to an overlong UTF-8 sequence that `access()` rejects or treats as a literal byte. | `SDL3Main.cpp:709` | T6 |
+
+### Withdrawn findings (attacked successfully — no action)
+
+| ID | Finding | Why withdrawn |
+|----|---------|---------------|
+| E3 | `\v`/`\f` not trimmed from mod.txt | Practically impossible; `isspace()` hardens for free |
+| E5 | `__argc ≥ 62` drops argv entries | Unreachable on Android (SDL3 provides 1–5 args) |
+| E10 | 3-node circular alias resolves to wrong module | Code implements the plan's bounded-by-design 8-hop guard correctly |
+| E13 | `m_aliasMap` not serialized | Template map is also not serialized; aliases are runtime-only; `xfer()` is correct |
+| E17 | BUILD_DIR whitespace brittleness | Bash does not permit whitespace around `=` |
+
+### Verified clean (confirmed correct by 2+ members — no action)
+
+- **Task 2 argv injection flow**: static-buffer lifetime correct, `__argv`/`__argc` bridge consumed correctly by both `parseCommandLineForStartup` and `parseCommandLineForEngineInit`.
+- **Task 2 JNI ref management**: every local ref (`cls`, `intent`, `intentCls`, `modKey`, `modValue`) released; `GetStringUTFChars`/`ReleaseStringUTFChars` paired on every path including early exits; pending exceptions cleared.
+- **Task 2 modArgv bounds**: `n < 61` is exactly correct for 64 slots (61 originals + `-mod` + path + null).
+- **Task 1 POSIX separator**: GeneralsMD/Generals byte-identical, Win32 path unchanged, `AsciiString::concat(char)` correct overload.
+- **Task 6 ModuleFactory alias**: `findModuleTemplate` remains pure/idempotent for the non-alias case; no downstream breakage; 8-hop bound prevents infinite loops.
+- **Fontconfig gating**: strictly `arm64-android` only (`!windows & !ios & !android`); no linux64/macos collateral.
+
+### Remediation task graph
+
+```
+Wave 1 (7 parallel — no shared files, start immediately):
+├── T1: Gradle SDL3 java srcDir → android-vulkan          (F2)        [quick]
+├── T2: NDK host-tag detection in packager                 (F4)        [unspecified-low]
+├── T3: Doc path reconciliation                            (F8,F19,F20)[writing]
+├── T4: POSIX backslash normalize in parseMod ×2           (F11)       [unspecified-low]
+├── T5: ModuleFactory alias guards + debt doc ×2           (F12-14)    [unspecified-low]
+├── T6: SDL3Main mod-path hardening                        (F5-7,F21)  [unspecified-high]
+└── T8: Extend adversarial preflight test — RED            (F1,F3,F17) [unspecified-low]
+
+Wave 2 (after Wave 1):
+└── T7: Harden preflight.sh — GREEN                        (F1,F3,F9,F10,F15,F16) [unspecified-high]
+         depends: T8 (makes its probes pass) + T1 (F10 validates the gradle value)
+
+Wave 3 (after Wave 2):
+└── T9: Final verification gate (preflight + adversarial + build + residue)
+```
+
+**Critical path: T8 → T7 → T9.** TDD order: T8 (intentionally red on the new probes) lands **before** T7 (green).
+
+---
+
+### Task T1: Fix Gradle SDL3 Java srcDir (F2)
+
+**Files:** `android/app/build.gradle:116`
+
+Replace the stale srcDir:
+```groovy
+// GeneralsX @bugfix Claude 10/07/2026 F2: srcDir pointed at stale build/android-game
+def sdl3JavaSrc = file("../../build/android-vulkan/_deps/sdl3-src/android-project/app/src/main/java")
+```
+**QA:** `grep -n 'sdl3-src' android/app/build.gradle` shows `android-vulkan`; no `android-game` on the srcDir line.
+
+---
+
+### Task T2: Detect NDK host tag in packager (F4)
+
+**Files:** `scripts/build/android/package-android-zh.sh:37,89,95`
+
+Add host detection after `cd "${REPO_ROOT}"`, then use `${NDK_HOST_TAG}` at lines 89 and 95 in place of the hardcoded `darwin-x86_64`:
+```bash
+# GeneralsX @bugfix Claude 10/07/2026 F4: NDK prebuilt dir is host-specific;
+# hardcoding darwin-x86_64 silently drops libc++_shared.so on WSL/Linux.
+case "$(uname -s)" in
+    Darwin)               NDK_HOST_TAG="darwin-x86_64"  ;;
+    Linux)                NDK_HOST_TAG="linux-x86_64"   ;;
+    MINGW*|MSYS*|CYGWIN*) NDK_HOST_TAG="windows-x86_64" ;;
+    *) echo "ERROR: unsupported host OS: $(uname -s)" >&2; exit 1 ;;
+esac
+```
+Also add a Linux fallback default for `ANDROID_NDK_HOME` at line 37 (e.g. `${HOME}/Android/Sdk/ndk/27.1.12297006`).
+**QA:** `bash -n scripts/build/android/package-android-zh.sh` (syntax OK); `grep -n 'darwin-x86_64' package-android-zh.sh` returns only the `Darwin)` arm.
+
+---
+
+### Task T3: Reconcile doc build-dir references (F8, F19, F20)
+
+**Files:** `README.md:135-136`, `AGENTS.md` §10, `android/codemap.md`, `android.md:59,62,84-105`, `docs/WORKDIR/android-safe-build-loop.md` §Guardrails, `docs/superpowers/plans/2026-07-08-android-mod-architecture.md` §Success Criteria
+
+Mechanical token-replace `android-game` → `android-vulkan` (and `cmake --preset android-game` → `android-vulkan`) in active instruction paths. AGENTS.md §10 rewritten: both Gradle (post-T1) and packager now use `android-vulkan`; keep a one-line historical note. The obsolete manual zipalign prose in `android.md:84-105` gets a pointer to the automated script rather than a full rewrite.
+
+- **F19:** add a note to `android-safe-build-loop.md` §Guardrails that check1 tolerates untracked files.
+- **F20:** soften Success Criteria #3 "byte-identical" → "behavior-preserving in vanilla mode (JNI calls still execute; no gameplay-affecting change)".
+**QA:** `grep -rn 'android-game' README.md AGENTS.md android.md android/codemap.md docs/WORKDIR/android-safe-build-loop.md` → only intentional historical mentions.
+
+---
+
+### Task T4: Normalize backslash separators in parseMod on POSIX (F11)
+
+**Files:** `GeneralsMD/Code/GameEngine/Source/Common/CommandLine.cpp:1091` + `Generals/Code/GameEngine/Source/Common/CommandLine.cpp:1091`
+
+In `parseMod()`, before the existing `if (!endsWith...)` block, drop a trailing Windows-style backslash on POSIX so `opendir` does not see a literal `\` filename:
+```cpp
+#ifndef _WIN32
+		// GeneralsX @bugfix Claude 10/07/2026 F11: a Windows-style trailing '\' must be
+		// treated as a separator on POSIX, else opendir() sees a literal '\' filename.
+		if (modPath.endsWith("\\"))
+		{
+			modPath = modPath.reverseSubstr(modPath.getLength() - 1); // drop trailing '\'
+		}
+#endif
+		if (!modPath.endsWith("\\") && !modPath.endsWith("/"))
+		{
+#ifdef _WIN32
+			modPath.concat('\\');
+#else
+			modPath.concat('/');
+#endif
+		}
+```
+**API note:** executor must verify `AsciiString` exposes `reverseSubstr`/`getLength` (grep `Include/Common/AsciiString.h`); if absent, use `str()` + manual truncate. No casts to silence types.
+**QA:** `cmake --build build/android-vulkan --target z_generals` compiles both copies.
+
+---
+
+### Task T5: Guard module alias registration (F12, F13, F14)
+
+**Files:** `GeneralsMD/Code/GameEngine/Source/Common/Thing/ModuleFactory.cpp:714` + `Generals/.../Thing/ModuleFactory.cpp:714`, and `ModuleFactory.h:74` (both copies)
+
+In `addModuleAlias()`, after computing `existingKey`/`aliasKey`, reject empty and self-aliases:
+```cpp
+	// GeneralsX @bugfix Claude 10/07/2026 F13: reject empty alias name
+	if (aliasName.isEmpty())
+	{
+		DEBUG_CRASH(("addModuleAlias: empty alias name"));
+		return;
+	}
+	// GeneralsX @bugfix Claude 10/07/2026 F12: reject self-alias (wastes findModuleTemplate iterations)
+	if (aliasKey == existingKey)
+	{
+		DEBUG_CRASH(("addModuleAlias: alias '%s' identical to existing name", aliasName.str()));
+		return;
+	}
+```
+F14 — document the intentional no-op in `ModuleFactory.h:74`:
+```cpp
+	virtual void reset() override { }					///< We don't reset during the lifetime of the app
+	// GeneralsX @tweak Claude 10/07/2026 F14: m_aliasMap intentionally NOT cleared here (reset is a
+	// no-op by design; alias lifetime = app lifetime). If reset semantics change, clear m_aliasMap too. Task 9 debt.
+```
+**API note:** verify `AsciiString::isEmpty()` exists; if absent, use `getLength()==0`.
+**QA:** incremental build compiles; guards present in both copies.
+
+---
+
+### Task T6: Harden SDL3Main mod-path parsing (F5, F6, F7, F21)
+
+**Files:** `GeneralsMD/Code/Main/SDL3Main.cpp` (mod-path block, lines 700-757)
+
+Four sub-fixes in the existing injection block:
+
+**F5 — strip UTF-8 BOM** (after `fgets` at ~740, before the trim loop):
+```cpp
+// GeneralsX @bugfix Claude 10/07/2026 F5: strip UTF-8 BOM (Windows Notepad default)
+if ((unsigned char)modPathBuf[0]==0xEF && (unsigned char)modPathBuf[1]==0xBB && (unsigned char)modPathBuf[2]==0xBF) {
+    memmove(modPathBuf, modPathBuf+3, strlen(modPathBuf)-2); // shift rest + NUL
+}
+```
+**F6 — trim the Intent path** (after `snprintf` at ~709): apply the same trailing-whitespace trim already used for mod.txt (lines 743-748). Extract a small static `trimTrailingWs(char*)` helper to avoid duplication, or duplicate the loop.
+**F7 — warn on truncation** (after both snprintf and fgets populate `modPathBuf`):
+```cpp
+// GeneralsX @bugfix Claude 10/07/2026 F7: warn on silent truncation
+if (strlen(modPathBuf) >= sizeof(modPathBuf)-2) {
+    __android_log_print(ANDROID_LOG_WARN, "GeneralsX", "Mod path truncated to %zu bytes", sizeof(modPathBuf));
+}
+```
+**F21 — reject CESU-8 overlong NUL** (after obtaining `modPath` from JNI, before snprintf):
+```cpp
+// GeneralsX @bugfix Claude 10/07/2026 F21: reject CESU-8 overlong NUL (\xC0\x80) from Java
+if (strstr(modPath, "\xC0\x80") != nullptr) {
+    __android_log_print(ANDROID_LOG_WARN, "GeneralsX", "Mod path contains embedded NUL (CESU-8); ignoring");
+    modPath = nullptr;
+}
+```
+**QA:** incremental build compiles; `grep -n '0xEF.*0xBB.*0xBF\|CESU-8\|truncated to' SDL3Main.cpp` shows all guards.
+
+---
+
+### Task T7: Harden preflight.sh (F1, F3, F9, F10, F15, F16) — GREEN
+
+**Files:** `scripts/build/android/preflight.sh` (depends: T8 red, T1 gradle value)
+
+**F1 — expand check5 regex** (line 70) to cover all four forms:
+```bash
+git diff HEAD~1 HEAD | grep -E '^\+[[:space:]]*#if(def|ndef)?[[:space:]]+(![[:space:]]*)?(defined[[:space:]]*\([[:space:]]*)?RTS_GENERALS([^[:alnum:]_]|$)'
+```
+**F3 — check6** (line 85): require an annotation among the diff's *added* lines, not the whole file:
+```bash
+added="$(git diff HEAD~1 HEAD -- "${f}" | grep -E '^\+[^+]')"
+if [[ -n "${added}" ]] && ! echo "${added}" | grep -q "GeneralsX @"; then
+    echo "  missing annotation in new lines: ${f}" >&2; MISSING=1
+fi
+```
+**F9 — dxvk reset** (line 27): warn loudly before discarding:
+```bash
+if [[ -n "$(git -C references/fbraz3-dxvk status --porcelain)" ]]; then
+    echo "  NOTE: discarding DXVK submodule local changes (cmake re-applies Patches/dxvk-android.patch on next configure)." >&2
+fi
+git -C references/fbraz3-dxvk checkout -- . 2>/dev/null || true
+```
+**F10 — add check7b** after check7 (validates the value T1 set):
+```bash
+grep -E 'build/android-vulkan/[^"]*sdl3-src' "${GRADLE}" >/dev/null \
+    || fail "build.gradle SDL3 java srcDir must point at build/android-vulkan (F2)."
+```
+**F15/F16:** add comments on check5/check6 acknowledging the merge-commit first-parent limitation and strengthening the initial-commit skip echo to `WARNING`.
+**QA:** `bash scripts/build/android/preflight.sh` → PASS; `bash scripts/build/android/test-preflight-adversarial.sh` → `ALL GUARDRAILS PROVEN ADVERSARIALLY` (0 WEAK).
+
+---
+
+### Task T8: Extend adversarial preflight test (F1, F3, F17) — RED
+
+**Files:** `scripts/build/android/test-preflight-adversarial.sh`
+
+**F1** — add three probes after the existing check5 block (each a separate `commit_violation` / `run_pf` / `expect_fail`): `#ifdef RTS_GENERALS`, `#ifndef RTS_GENERALS`, `#if !RTS_GENERALS`.
+**F3** — add a check6 probe: append an unannotated line to an *existing annotated* file (e.g. `ArchiveFileSystem.cpp`), `commit_violation`, `expect_fail "check6" "unannotated change in existing file" "annotation"`.
+**F17** — fix the stale header comment (lines 1-12): check1 now *tolerates* untracked files, *rejects* tracked changes.
+**QA:** `bash -n` syntax OK; running the extended test against the **current** (pre-T7) preflight reports the new probes as WEAK — this is the intended red state.
+
+---
+
+### Task T9: Final verification gate (no commit)
+
+Run by the orchestrator (not delegated). Prove the whole remediation is coherent end-to-end.
+
+1. `bash scripts/build/android/preflight.sh` → PASS.
+2. `bash scripts/build/android/test-preflight-adversarial.sh` → exit 0, 0 WEAK.
+3. `cmake --build build/android-vulkan --target z_generals` → compiles (validates T4/T5/T6 C++).
+4. Residue greps (all must return nothing actionable):
+   - `grep -rn 'darwin-x86_64' scripts/build/android/package-android-zh.sh` → only the `Darwin)` arm.
+   - `grep -rn 'build/android-game' README.md AGENTS.md android.md android/codemap.md` → only historical notes.
+   - `grep -n 'android-game' android/app/build.gradle` → empty.
+
+---
+
+### Commit strategy (Phase 1.5)
+
+One Conventional Commit per task, on `main`. TDD order: **T8 before T7.** Source changes carry `// GeneralsX @bugfix Claude 10/07/2026 F<n>` inline annotations.
+
+| # | Task | Commit message |
+|---|------|----------------|
+| 1 | T1 | `fix(android): point gradle SDL3 java srcDir at android-vulkan build dir` |
+| 2 | T2 | `fix(android): detect NDK host tag so packager runs on WSL/Linux` |
+| 3 | T3 | `docs(android): reconcile build dir refs to android-vulkan` |
+| 4 | T4 | `fix(input): normalize backslash separators in mod path on POSIX` |
+| 5 | T5 | `fix(game-logic): guard module alias registration against self/empty names` |
+| 6 | T6 | `fix(android): harden mod path parsing (BOM strip, trim, truncation, NUL)` |
+| 7 | T8 | `test(build): extend adversarial preflight probes (ifdef/ifndef/modified-file)` |
+| 8 | T7 | `fix(build): harden preflight regex, annotation diff, dxvk-reset, gradle check` |
+
+Each commit is independently revertible. The only cross-commit dependency is T7 ← (T8 logic, T1 value).
+
+### Success Criteria (Phase 1.5)
+
+1. All 8 commits land on `main`, each passing its per-task QA gate.
+2. T9 final gate green: preflight PASS + adversarial ALL-PROVEN (0 WEAK) + incremental build compiles + zero actionable residue greps.
+3. F1–F17 resolved; F14 and F18 documented as known debt; the 5 withdrawn findings untouched.
+4. The committed baseline (Tasks 0.3/0.4, 1, 2, 6) is safe to build Task 3 on top of.
 
 ---
 
