@@ -113,7 +113,10 @@ android {
             
             // Reference the SDL3 Java source path from the build cache if it exists,
             // otherwise dynamically search the .cxx build folder.
-            def sdl3JavaSrc = file("../../build/android-game/_deps/sdl3-src/android-project/app/src/main/java")
+            // GeneralsX @bugfix Claude 10/07/2026 F2: srcDir pointed at stale build/android-game
+            // (packager BUILD_DIR is build/android-vulkan per package-android-zh.sh). The .cxx
+            // fallback below does not exist on a fresh checkout, so Java compile failed.
+            def sdl3JavaSrc = file("../../build/android-vulkan/_deps/sdl3-src/android-project/app/src/main/java")
             if (sdl3JavaSrc.exists()) {
                 java.srcDirs += sdl3JavaSrc
             } else {
