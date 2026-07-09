@@ -107,3 +107,5 @@ android/.idea/
 
 ## Generated codemap artifacts (codemap skill output; never hand-edited)
 codemap.md
+docs/superpowers/context.md
+docs/WORKDIR/*-wsl-handoff.md
