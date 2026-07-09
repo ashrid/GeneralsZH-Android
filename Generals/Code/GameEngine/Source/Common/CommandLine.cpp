@@ -1087,7 +1087,15 @@ Int parseMod(char *args[], Int num)
 		if (statBuf.st_mode & _S_IFDIR)
 		{
 			if (!modPath.endsWith("\\") && !modPath.endsWith("/"))
+			{
+#ifdef _WIN32
 				modPath.concat('\\');
+#else
+				// GeneralsX @bugfix Claude 09/07/2026 POSIX path separator for mod dir —
+				// a '\'-terminated path breaks loadBigFilesFromDirectory's opendir on Android
+				modPath.concat('/');
+#endif
+			}
 			DEBUG_LOG(("Mod dir is '%s'.", modPath.str()));
 			TheWritableGlobalData->m_modDir = modPath;
 		}
