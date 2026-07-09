@@ -18,6 +18,14 @@ fail() {
 
 echo "=== preflight: 7 guardrail checks ==="
 
+# GeneralsX @build android-port 09/07/2026 Reset the DXVK submodule before the clean-tree
+# check. cmake/dx8.cmake applies Patches/dxvk-android.patch to references/fbraz3-dxvk at
+# configure time (idempotently), dirtying the submodule after every build — which would
+# spuriously fail commit-gating below. The patch is reproducible (in Patches/, re-applied
+# by cmake), so discarding the applied state is safe; the next configure re-applies it.
+# No-op if the submodule is not yet initialized.
+git -C references/fbraz3-dxvk checkout -- . 2>/dev/null || true
+
 # 1. Clean tree + HEAD hash (enforces commit-gating: one build per hash)
 if [[ -n "$(git status --porcelain)" ]]; then
 	fail "git tree not clean — commit-gating requires a clean tree. Run 'git status'."
