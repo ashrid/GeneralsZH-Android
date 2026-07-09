@@ -1088,6 +1088,14 @@ Int parseMod(char *args[], Int num)
 
 		if (statBuf.st_mode & _S_IFDIR)
 		{
+#ifndef _WIN32
+			// GeneralsX @bugfix Claude 10/07/2026 F11: a Windows-style trailing '\' must be
+			// treated as a separator on POSIX, else opendir() sees a literal '\' filename.
+			if (modPath.endsWith("\\"))
+			{
+				modPath.removeLastChar();
+			}
+#endif
 			if (!modPath.endsWith("\\") && !modPath.endsWith("/"))
 			{
 #ifdef _WIN32
