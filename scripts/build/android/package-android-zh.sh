@@ -24,6 +24,22 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "${REPO_ROOT}"
 
+# GeneralsX @bugfix Claude 10/07/2026 F4: NDK prebuilt dir is host-specific. Hardcoding
+# darwin-x86_64 silently dropped libc++_shared.so (dlopen crash) and broke llvm-strip
+# (set -e abort) on WSL/Linux — the primary dev platform.
+case "$(uname -s)" in
+    Darwin)
+        NDK_HOST_TAG="darwin-x86_64"
+        _NDK_DEFAULT="${HOME}/Library/Android/sdk/ndk/27.1.12297006" ;;
+    Linux)
+        NDK_HOST_TAG="linux-x86_64"
+        _NDK_DEFAULT="${HOME}/Android/Sdk/ndk/27.1.12297006" ;;
+    MINGW*|MSYS*|CYGWIN*)
+        NDK_HOST_TAG="windows-x86_64"
+        _NDK_DEFAULT="${HOME}/AppData/Local/Android/Sdk/ndk/27.1.12297006" ;;
+    *) echo "ERROR: unsupported host OS: $(uname -s)" >&2; exit 1 ;;
+esac
+
 ABI="arm64-v8a"
 ANDROID_DIR="${REPO_ROOT}/android"
 APP_DIR="${ANDROID_DIR}/app"
@@ -34,7 +50,7 @@ ASSETS="${APP_DIR}/src/main/assets"
 BUILD_DIR="${REPO_ROOT}/build/android-vulkan"
 
 # ---- 1. Prerequisites ---------------------------------------------------------
-: "${ANDROID_NDK_HOME:=${HOME}/Library/Android/sdk/ndk/27.1.12297006}"
+: "${ANDROID_NDK_HOME:=${_NDK_DEFAULT}}"
 export ANDROID_NDK_HOME
 export ANDROID_HOME="${ANDROID_HOME:-${HOME}/Library/Android/sdk}"
 if [[ ! -d "${ANDROID_NDK_HOME}" ]]; then
@@ -86,13 +102,13 @@ copy_if_exists "${BUILD_DIR}/_deps/glm-build/glm/libglm.so" "libglm.so"
 # GameSpycompat shim (built by the CMake engine build).
 copy_if_exists "${BUILD_DIR}/libgamespy.so" "libgamespy.so"
 # libc++_shared.so (from the NDK — required by libc++ runtime).
-copy_if_exists "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" "libc++_shared.so"
+copy_if_exists "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${NDK_HOST_TAG}/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" "libc++_shared.so"
 # libmain.so — the engine itself, built by externalNativeBuild into the APK.
 # When packaging from pre-staged libs (no CMake), it must be staged manually.
 # Strip debug symbols to reduce the 85MB debug .so to ~16MB release size.
 ENGINE_MAIN="${BUILD_DIR}/GeneralsMD/Code/Main/libmain.so"
 if [[ -f "${ENGINE_MAIN}" ]]; then
-    "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip" --strip-debug \
+    "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${NDK_HOST_TAG}/bin/llvm-strip" --strip-debug \
         -o "${JNI_LIBS}/libmain.so" "${ENGINE_MAIN}"
     echo "    staged libmain.so (stripped)"
 elif [[ ! -f "${JNI_LIBS}/libmain.so" ]]; then
