@@ -690,12 +690,18 @@ platform.** `m_modDir` is consumed only by `loadMods()` (loads `*.big` via
 cursors (not compiled on Android). Nothing registers the mod dir with generic file
 resolution.
 
-Therefore a mod like Xenoforce that ships loose `Art/` and `Data/` folders must have
-those **merged into the GameData tree** (`GameData/Art/`, `GameData/Data/`) to take
-effect. Loose files in GameData win over every archive (resolution priority 1).
-Trade-off: loose overrides are NOT switched by `mod.txt` — removing the mod means
-deleting the merged files. Engine-level loose-file resolution from the mod dir is
-deferred backlog item D8 (see plan §Phase 2 Task 13 / D8a).
+Therefore a mod like Xenoforce that ships loose `Art/` and `Data/` folders can either
+have those **merged into the GameData tree** (`GameData/Art/`, `GameData/Data/`) — loose
+files in GameData win over every archive (resolution priority 1) — or, as of Task 13
+(D8a), place them directly in the mod directory (`Mods/Xenoforce/Art/`, etc.) and they
+will resolve via `LocalFileSystem::setAssetFallbackPaths`, which `ArchiveFileSystem::
+loadMods()` wires automatically. The fallback search order is: CWD → asset root →
+case-insensitive asset root → **mod fallback paths** → case-insensitive CWD. Mod loose
+files override `.big` archive contents but NOT loose files already in the GameData root.
+Parent-traversal (`..`) segments in fallback paths are rejected (security). Trade-off:
+loose overrides merged into GameData are NOT switched by `mod.txt` — removing the mod
+means deleting the merged files. Mod-directory loose files ARE switched by `mod.txt`
+(switched when the mod dir changes).
 
 ### 10.5 ModuleFactory alias seam (plan D5)
 
@@ -715,16 +721,52 @@ adb shell mkdir -p $BASE/Mods/Xenoforce
 # .big archives -> mod dir (switchable via mod.txt)
 adb push 15Xeno.big      $BASE/Mods/Xenoforce/
 adb push 15PacthXeno.big $BASE/Mods/Xenoforce/
-# Loose overrides -> merged into GameData tree (always active while present)
+# Loose overrides (Option A): merged into GameData tree (always active while present)
 adb push Art/  $BASE/Art/
 adb push Data/ $BASE/Data/
+# OR Loose overrides (Option B, Task 13): in the mod dir (switchable via mod.txt)
+adb push Art/  $BASE/Mods/Xenoforce/Art/
+adb push Data/ $BASE/Mods/Xenoforce/Data/
 # Set the persistent default
 adb shell "echo '$BASE/Mods/Xenoforce' > $BASE/mod.txt"
 # Or per-launch override (wins over mod.txt):
 adb shell am start -n me.generalsx.zh/.GameActivity --es "mod" "$BASE/Mods/Xenoforce"
 ```
 
-### 10.7 Verification matrix — PENDING
+### 10.7 Mod picker GUI (Task 12 / D7)
+
+A **Mods** button is dynamically created on the main menu (bottom-left, via
+`TheWindowManager->gogoGadgetPushButton`). Tapping it pushes `Menus/ModPickerMenu.wnd`,
+which contains a ListBox + Activate + Cancel buttons. `ModPickerMenuInit` scans
+`GameData/Mods/` for subdirectories (POSIX `dirent`/`stat`), populates the ListBox, and
+on Activate writes the selected mod path to `mod.txt`. Cancel/Esc pops without changes.
+The button is destroyed in `MainMenuShutdown` to prevent dangling pointers on reopen.
+This gives users a touch-friendly way to select mods without `adb` or `mod.txt` editing.
+
+### 10.8 Memory-budget eviction safety (Task 11 / D6 — Oracle review)
+
+The mod-archive eviction path (`evictColdestModArchive`, triggered when the DMA budget
+exceeds 512 MB) had two CRITICAL bugs found by Oracle review, both fixed (commit
+`c3c7c0498`):
+
+1. **Use-after-free**: `closeArchiveFile` deleted the `ArchiveFile` without calling
+   `closeAllFiles()` first — any open `File` handles from that archive would dangle. Fixed:
+   `it->second->closeAllFiles()` is now called before `delete` in both
+   `StdBIGFileSystem` and `Win32BIGFileSystem`. The `DEBUG_ASSERTCRASH` that crashed
+   debug builds on non-music archive close was also removed.
+
+2. **Eviction storm**: Archives are allocated via global `new`/`delete` (`#define NEW new`
+   in `GameMemoryNull.h`), NOT the DMA allocator. So evicting archives never decrements
+   `theCurrentBudgetBytes`. Without a guard, every DMA allocation over budget would
+   re-trigger eviction forever. Fixed: `theEvictionExhausted` flag (atomic) is set when
+   `evictColdestModArchive()` returns FALSE (nothing left), with hysteresis re-arming at
+   80% of the budget threshold.
+
+**Known limitations** (documented, not blocking): eviction is first-by-map-order
+(alphabetical path), NOT true LRU — no access tracking exists. It runs on the allocating
+thread (main game thread in practice on Android); not safe to call from other threads.
+
+### 10.9 Verification matrix — PENDING
 
 The 7-scenario logcat matrix (plan Task 4) has NOT been run. When the toolchain is
 provisioned and the APK built/installed, verify: (1) vanilla launch has no "Mod path"
