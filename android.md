@@ -855,8 +855,14 @@ Screenshots: `on-device-screenshot.png` / `on-device-screenshot-early.png` in th
   null-pointer dereference in DXVK's command-stream thread during continued rendering. No
   tombstone captured (`crash_dump64: failed to connected to tombstoned`). Needs backtrace
   capture (reproduce + read `/data/tombstones/` via root) to identify the triggering D3D8 op.
-- **OOM during audio loading** (tombstone_09) — `OpenALAudioManager::playSample3D` →
-  `RAMFile::openFromArchive` → `operator new[](size)` → Scudo `MapAllocator` mmap fails
-  (`reportMapError`). `RAMFile` loads the entire audio file into RAM; cumulative cache usage
-  or a large file exhausts memory. Fix path: audio streaming (`StreamingArchiveFile`) or
-  cache eviction. Device has 15 GB RAM / 9.6 GB free; engine runs at ~4 GB RSS.
+- **OOM during audio loading** (tombstone_09/10) — `Scudo ERROR: internal map failure
+  (error desc=Out of memory)`. Root cause: the process reaches **VmSize ~19 GB** (virtual
+  address space) while RSS is only ~2.5 GB — DXVK/Vulkan reserves huge virtual ranges, plus
+  thread stacks and heap. When the audio system loads a file (`RAMFile::openFromArchive` →
+  `operator new[]`), Scudo's secondary allocator (mmap) can't find contiguous space → SIGABRT.
+  Map count is 26,775 / 65,530 (not at limit); the device has 9.6 GB physical free. The DXVK
+  SIGSEGV (null deref 0x15c) is likely the SAME root cause — a failed Vulkan allocation
+  returns null and DXVK derefs it. Fix path: reduce virtual memory reservations (DXVK config,
+  thread stack sizes), stream audio (`StreamingArchiveFile`) instead of loading into RAM, or
+  limit the audio file cache. The engine survives ~2.5 min (until menu music starts) before
+  the crash.
