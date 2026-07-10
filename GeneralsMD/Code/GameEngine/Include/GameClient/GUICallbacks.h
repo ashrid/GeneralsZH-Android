@@ -170,6 +170,13 @@ extern void ExtrasMenuShutdown( WindowLayout *layout, void *userData );
 extern WindowMsgHandledType ExtrasMenuSystem( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );
 extern WindowMsgHandledType ExtrasMenuInput( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );
 
+// GeneralsX @feature Claude 10/07/2026 Task 12 (D7): Mod Picker Menu.
+extern void ModPickerMenuInit( WindowLayout *layout, void *userData );
+extern void ModPickerMenuUpdate( WindowLayout *layout, void *userData );
+extern void ModPickerMenuShutdown( WindowLayout *layout, void *userData );
+extern WindowMsgHandledType ModPickerMenuSystem( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );
+extern WindowMsgHandledType ModPickerMenuInput( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );
+
 // Popup host Game Internet -----------------------------------------------------------------------------------
 extern void DifficultySelectInit( WindowLayout *layout, void *userData );
 extern WindowMsgHandledType DifficultySelectSystem( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );

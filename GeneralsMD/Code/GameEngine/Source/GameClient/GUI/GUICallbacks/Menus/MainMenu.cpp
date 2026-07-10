@@ -76,9 +76,10 @@
 #include "GameClient/InGameUI.h"
 
 // GeneralsX @feature BenderAI 21/04/2026 In-game update checker for tagged release builds
+// GeneralsX @feature Claude 10/07/2026 Task 12 (D7): GadgetPushButton.h needed unconditionally for Mods button.
+#include "GameClient/GadgetPushButton.h"
 #ifdef SAGE_UPDATE_CHECK
 #include "Common/UpdateChecker.h"
-#include "GameClient/GadgetPushButton.h"
 #include <SDL3/SDL.h>
 #endif
 
@@ -143,6 +144,9 @@ static NameKeyType buttonEasyID = NAMEKEY_INVALID;
 static NameKeyType buttonMediumID = NAMEKEY_INVALID;
 static NameKeyType buttonHardID = NAMEKEY_INVALID;
 static NameKeyType buttonDiffBackID = NAMEKEY_INVALID;
+// GeneralsX @feature Claude 10/07/2026 Task 12 (D7): dynamic Mods button on main menu.
+static NameKeyType buttonModsID = NAMEKEY_INVALID;
+static GameWindow *modsButton = nullptr;
 
 
 // window pointers --------------------------------------------------------------------------------
@@ -893,19 +897,52 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 				x, y, btnW, btnH,
 				&instData, nullptr, TRUE);
 
-			if (updateNotifyButton)
-			{
-				GameFont* font = TheWindowManager->winFindFont("Arial", 10, FALSE);
-				if (font)
-					updateNotifyButton->winSetFont(font);
+		if (updateNotifyButton)
+		{
+			GameFont* font = TheWindowManager->winFindFont("Arial", 10, FALSE);
+			if (font)
+				updateNotifyButton->winSetFont(font);
 
-				UnicodeString displayText;
-				displayText.format(L"Update available: %hs", latestTag);
-				GadgetButtonSetText(updateNotifyButton, displayText);
-			}
+			UnicodeString displayText;
+			displayText.format(L"Update available: %hs", latestTag);
+			GadgetButtonSetText(updateNotifyButton, displayText);
 		}
 	}
+}
 #endif
+
+	// GeneralsX @feature Claude 10/07/2026 Task 12 (D7): create Mods button on main menu.
+	if (modsButton == nullptr && TheDisplay && parentMainMenu)
+	{
+		const Int btnW = 120;
+		const Int btnH = 26;
+		const Int margin = 8;
+		const Int x = margin;
+		const Int y = TheDisplay->getHeight() - btnH - margin;
+
+		WinInstanceData instData;
+		instData.init();
+		BitSet(instData.m_style, GWS_PUSH_BUTTON | GWS_MOUSE_TRACK);
+
+		AsciiString labelKey = "GeneralsXModsButton";
+		instData.m_textLabelString = labelKey;
+
+		modsButton = TheWindowManager->gogoGadgetPushButton(
+			parentMainMenu,
+			WIN_STATUS_ENABLED,
+			x, y, btnW, btnH,
+			&instData, nullptr, TRUE);
+
+		if (modsButton)
+		{
+			GameFont* font = TheWindowManager->winFindFont("Arial", 12, FALSE);
+			if (font)
+				modsButton->winSetFont(font);
+
+			buttonModsID = TheNameKeyGenerator->nameToKey("GeneralsXModsButton");
+			GadgetButtonSetText(modsButton, UnicodeString(L"Mods"));
+		}
+	}
 
 	if (TheDownloadManager && !TheDownloadManager->isDone())
 	{
@@ -1451,6 +1488,14 @@ WindowMsgHandledType MainMenuSystem( GameWindow *window, UnsignedInt msg,
 				TheShell->push("Menus/CreditsMenu.wnd" );
 				dropDownWindows[DROPDOWN_MAIN]->winHide(FALSE);
 				TheTransitionHandler->reverse("MainMenuDefaultMenu");
+			}
+			// GeneralsX @feature Claude 10/07/2026 Task 12 (D7): open mod picker.
+			else if( control == modsButton )
+			{
+				if(dontAllowTransitions)
+					break;
+				buttonPushed = TRUE;
+				TheShell->push("Menus/ModPickerMenu.wnd");
 			}
 			else if( controlID == buttonMultiPlayerID)
 			{
