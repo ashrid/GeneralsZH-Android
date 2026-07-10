@@ -83,6 +83,9 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            // GeneralsX @build Claude 10/07/2026 Temporarily debuggable for heap-corruption
+            // debugging: lets the wrap.<pkg> property enable Scudo GWP-ASan/MTE at runtime.
+            debuggable true
             // Proguard is off: the native engine is the whole app; there is no
             // Java/Kotlin bytecode to shrink beyond the SDLActivity stub.
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

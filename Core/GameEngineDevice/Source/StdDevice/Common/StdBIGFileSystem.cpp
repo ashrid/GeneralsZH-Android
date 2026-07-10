@@ -593,6 +593,13 @@ ArchiveFile * StdBIGFileSystem::openArchiveFile(const Char *filename) {
 		Int pathIndex = -1;
 		do {
 			++pathIndex;
+			// GeneralsX @bugfix Claude 10/07/2026 Bound the path read against buffer overflow — a
+			// malformed/long .big directory entry could overflow buffer[_MAX_PATH] and corrupt
+			// the adjacent fileInfo heap pointer (Scudo heap-corruption detection on Android).
+			if (pathIndex >= _MAX_PATH) {
+				DEBUG_CRASH(("openArchiveFile: path too long (>= %d) in %s, truncating", _MAX_PATH, filename));
+				break;
+			}
 			fp->read(buffer + pathIndex, 1);
 		} while (buffer[pathIndex] != 0);
 
