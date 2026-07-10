@@ -721,6 +721,13 @@ void MainMenuShutdown( WindowLayout *layout, void *userData )
 	}
 #endif
 
+	// GeneralsX @bugfix Claude 10/07/2026 Task 12 Oracle review: destroy Mods button on shutdown so the pointer cannot dangle if the main menu is reopened.
+	if (modsButton)
+	{
+		TheWindowManager->winDestroy(modsButton);
+		modsButton = nullptr;
+	}
+
 	CancelPatchCheckCallback();
 
 	// if we are shutting down for an immediate pop, skip the animations

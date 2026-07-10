@@ -639,9 +639,8 @@ void StdBIGFileSystem::closeArchiveFile(const Char *filename) {
 
 		// No need to turn off other audio, as the lookups will just fail.
 	}
-	DEBUG_ASSERTCRASH(stricmp(filename, MUSIC_BIG) == 0, ("Attempting to close Archive file '%s', need to add code to handle its shutdown correctly.", filename));
-
-	// may need to do some other processing here first.
+	// GeneralsX @bugfix Claude 10/07/2026 Task 11 Oracle review: closeAllFiles before delete to prevent use-after-free on open File handles.
+	it->second->closeAllFiles();
 
 	delete (it->second);
 	m_archiveFileMap.erase(it);

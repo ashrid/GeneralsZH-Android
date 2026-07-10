@@ -50,6 +50,7 @@
 #include "Common/ArchiveFile.h"
 #include "Common/ArchiveFileSystem.h"
 #include "Common/AsciiString.h"
+#include "Common/LocalFileSystem.h"
 #include "Common/PerfTimer.h"
 
 
@@ -263,6 +264,10 @@ Int ArchiveFileSystem::getOpenArchiveCount() const
 	return (Int)m_archiveFileMap.size();
 }
 
+// GeneralsX @feature Claude 10/07/2026 Task 11 (D6): evict the first mod archive found
+// by map iteration order (alphabetical path), NOT true LRU — no access tracking exists.
+// Thread safety: called from DynamicMemoryAllocator which on Android runs on the
+// allocating thread (in practice the main game thread). Not safe to call from other threads.
 Bool ArchiveFileSystem::evictColdestModArchive()
 {
 	for (ArchiveFileMap::iterator it = m_archiveFileMap.begin(); it != m_archiveFileMap.end(); ++it)
@@ -338,6 +343,15 @@ void ArchiveFileSystem::loadMods()
 		MAYBE_UNUSED Bool ret = loadBigFilesFromDirectory(TheGlobalData->m_modDir, "*.big", TRUE);
 		(void)ret;
 		DEBUG_ASSERTLOG(ret, ("loadBigFilesFromDirectory(%s) returned FALSE!", TheGlobalData->m_modDir.str()));
+
+		// GeneralsX @feature Claude 10/07/2026 Task 13 Oracle review: push mod dir as
+		// loose-file fallback so unpacked assets (textures, INI) resolve without a .big.
+		if (TheLocalFileSystem != nullptr)
+		{
+			std::vector<AsciiString> fallbackPaths;
+			fallbackPaths.push_back(TheGlobalData->m_modDir);
+			TheLocalFileSystem->setAssetFallbackPaths(fallbackPaths);
+		}
 	}
 }
 

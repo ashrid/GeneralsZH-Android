@@ -450,6 +450,9 @@ void StdLocalFileSystem::setAssetFallbackPaths(const std::vector<AsciiString>& p
 	{
 		std::string s(p.str());
 		std::replace(s.begin(), s.end(), '\\', '/');
+		// GeneralsX @security Claude 10/07/2026 Task 13 Oracle review: reject parent-traversal segments.
+		if (s.find("/..") != std::string::npos || s.find("../") != std::string::npos || s == "..")
+			continue;
 		s_assetFallbackPaths.emplace_back(std::move(s));
 	}
 }

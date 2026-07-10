@@ -43,6 +43,11 @@
 #define MEMORY_TELEMETRY_ENABLED 1
 #define CNC_MEMORY_BUDGET_BYTES (512LL * 1024 * 1024) // 512 MB default budget
 static std::atomic<long> theCurrentBudgetBytes(0);
+// GeneralsX @bugfix Claude 10/07/2026 Task 11 Oracle review: exhausted flag prevents
+// eviction storm — archives use global new/delete (not DMA), so evicting them does
+// not decrement theCurrentBudgetBytes. Without this guard, every DMA allocation over
+// budget would re-trigger eviction forever. Hysteresis: re-arm at 80% of threshold.
+static std::atomic<bool> theEvictionExhausted(false);
 static std::atomic<long> thePeakBudgetBytes(0);
 
 static void sampleProcessTelemetry()
@@ -102,9 +107,18 @@ void *DynamicMemoryAllocator::allocateBytesDoNotZeroImplementation(Int numBytes)
 	long cur = (theCurrentBudgetBytes += (long)numBytes);
 	long prevPeak = thePeakBudgetBytes.load();
 	while (cur > prevPeak && !thePeakBudgetBytes.compare_exchange_weak(prevPeak, cur)) {}
-	// GeneralsX @feature Claude 10/07/2026 Task 11 (D6): evict coldest mod archive if budget exceeded.
-	if (cur > CNC_MEMORY_BUDGET_BYTES && TheArchiveFileSystem != nullptr)
-		TheArchiveFileSystem->evictColdestModArchive();
+	// GeneralsX @feature Claude 10/07/2026 Task 11 (D6): evict first mod archive if budget exceeded.
+	// Skipped once exhausted (nothing left to evict); re-arms via hysteresis at 80% threshold.
+	if (cur > CNC_MEMORY_BUDGET_BYTES && !theEvictionExhausted.load() && TheArchiveFileSystem != nullptr)
+	{
+		Bool evicted = TheArchiveFileSystem->evictColdestModArchive();
+		if (!evicted)
+			theEvictionExhausted.store(true);
+	}
+	else if (cur < (CNC_MEMORY_BUDGET_BYTES * 4 / 5) && theEvictionExhausted.load())
+	{
+		theEvictionExhausted.store(false);
+	}
 #endif
 	return p;
 }

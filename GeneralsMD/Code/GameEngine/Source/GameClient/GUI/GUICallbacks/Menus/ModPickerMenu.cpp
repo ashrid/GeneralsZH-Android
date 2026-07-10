@@ -129,15 +129,15 @@ WindowMsgHandledType ModPickerMenuSystem(GameWindow *window, UnsignedInt msg,
 
 			if (controlID == buttonActivateID)
 			{
-			if (modPickerListBox && !s_modPaths.empty())
-			{
-				Int selected = -1;
-				GadgetListBoxGetSelected(modPickerListBox, &selected);
-				if (selected >= 0 && selected < (Int)s_modPaths.size())
+				if (modPickerListBox && !s_modPaths.empty())
 				{
-					writeModTxt(s_modPaths[selected]);
+					Int selected = -1;
+					GadgetListBoxGetSelected(modPickerListBox, &selected);
+					if (selected >= 0 && selected < (Int)s_modPaths.size())
+					{
+						writeModTxt(s_modPaths[selected]);
+					}
 				}
-			}
 				TheShell->pop();
 			}
 			else if (controlID == buttonCancelID)
