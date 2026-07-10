@@ -410,6 +410,23 @@ A plain `git submodule update --init references/fbraz3-dxvk` leaves these uninit
 
 The `android-vulkan` preset had `RTS_BUILD_OPTION_FFMPEG=ON`, violating AGENTS.md (FFmpeg must be `OFF` for Android — vcpkg `ffmpeg:arm64-android` is broken, microsoft/vcpkg#33963; video is stubbed via the Bink stub). With `ON`, the guarded `pkg_check_modules(FFMPEG REQUIRED ...)` at `Core/GameEngineDevice/CMakeLists.txt:289` found the **host** x86_64 FFmpeg via pkg-config and injected `/usr/include/x86_64-linux-gnu` into the arm64 compile commands, pulling host glibc `sys/cdefs.h` → `__GNUC_PREREQ` macro cascade → build failure. The preset also cleared `PKG_CONFIG_PATH` but not `PKG_CONFIG_LIBDIR`, so pkg-config fell back to host `/usr/lib/x86_64-linux-gnu/pkgconfig` (also found DBUS). **Fix** (commit `26c6db4e0`): preset `RTS_BUILD_OPTION_FFMPEG=OFF` (skips the guarded find entirely) + `PKG_CONFIG_LIBDIR=""` in the preset environment (fully isolates the Android cross-compile from host pkg-config).
 
+### 4.11 ✅ DXVK Meson + packager build-chain fixes (2026-07-10)
+
+The DXVK-from-source build (Meson cross-compile) and the APK packager each had latent bugs that surfaced when first running the full `cmake --preset android-vulkan` → `package-android-zh.sh` pipeline. All fixed + committed:
+
+| Bug | Fix | Commit |
+|-----|-----|--------|
+| DXVK Meson cross-file had `aarch64-linux-android-clang` (no API level; NDK r27 ships `aarch64-linux-android24-clang`) — `dx8.cmake` set `DXVK_ANDROID_API` but the template placeholder was `@ANDROID_API@` (mismatch → empty) | Rename var to `ANDROID_API` to match the template | `66a66cab5` |
+| DXVK `meson.build:156` calls `dependency('SDL3')` (capital) → pkg-config queries `SDL3.pc`, but the FetchContent shim was `sdl3.pc` (lowercase, invisible) | Add a capital `SDL3.pc` twin to the shim | `432fb054a` |
+| DXVK needs `glslangValidator` (GLSL→SPIR-V), not installed | No-sudo: `apt download glslang-tools` + `dpkg-deb -x` to `~/.local/bin` (on PATH) | (env, not committed) |
+| `dxvk_adapter.cpp` uses `VK_KHR_portability_subset` (Vulkan beta ext, in `vulkan_beta.h`, gated behind `VK_ENABLE_BETA_EXTENSIONS`) — §5 listed this as a fix but it was never applied. Must live in DXVK `meson.build` (`add_project_arguments`) NOT the cross-file `c_args`, because `meson setup --reconfigure` does NOT re-read cross-file `c_args` (confirmed: `build.ninja` had 0 occurrences) but DOES re-read `meson.build` | Add to `Patches/dxvk-android.patch` (regenerated from `git diff`) | `9c0219ab3` |
+| Packager: OpenAL `.so` at `_deps/openal_soft-build/` (FetchContent), not `${BUILD_DIR}/openal-soft/` (silently missed → dlopen crash) | Fix the path | `bd76897f0` |
+| Packager: `[[ ! -d .../.git ]]` — a submodule's `.git` is a FILE (gitlink), not a dir, so `-d` always failed | Use `-e` | `96cb37a13` |
+| `mergeReleaseNativeLibs`: duplicate `libSDL3.so` (packager stages into jniLibs AND Gradle's `externalNativeBuild` emits as IMPORTED target) | `packagingOptions.jniLibs.pickFirst('**/*.so')` | `14db72004` |
+| Gradle `JdkImageTransform` needs `jlink` (JDK-only); default `java` was a JRE (no jlink) — `JAVA_HOME` unset | Packager auto-detects a JDK with `bin/jlink` | `3342dad6e` |
+
+**Result:** `cmake --build build/android-vulkan --target z_generals` builds `libmain.so`; `dxvk_d3d8_install` builds `libdxvk_d3d8.so`/`d3d9.so`; `package-android-zh.sh` produces a signed `app-release.apk` (30 MB). WSL note: background builds need `setsid` (nohup/disown get killed on shell exit); use `.ninja_lock` (not `pgrep`) as the running-build signal (pgrep self-matches the checking shell).
+
 ---
 
 ## 5. Bugs Found and Fixed (Earlier in the Port)
