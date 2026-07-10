@@ -35,7 +35,11 @@ endian     = 'little'
 # -fPIC is required for code that links into a shared library (libdxvk_d3d8.so
 # is dlopen'd by the Android app). -fno-plt and the default PIE settings are
 # handled by the NDK wrapper.
-c_args       = ['-fPIC', '-DANDROID', '-D__ANDROID__']
-cpp_args     = ['-fPIC', '-DANDROID', '-D__ANDROID__']
+# GeneralsX @bugfix Claude 10/07/2026 VK_ENABLE_BETA_EXTENSIONS exposes the
+# VK_KHR_portability_subset symbols (VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
+# VkPhysicalDevicePortabilitySubsetFeaturesKHR) that DXVK's dxvk_adapter.cpp
+# references — without it, the DXVK compile fails with undeclared identifiers.
+c_args       = ['-fPIC', '-DANDROID', '-D__ANDROID__', '-DVK_ENABLE_BETA_EXTENSIONS']
+cpp_args     = ['-fPIC', '-DANDROID', '-D__ANDROID__', '-DVK_ENABLE_BETA_EXTENSIONS']
 c_link_args  = ['-fPIC']
 cpp_link_args= ['-fPIC']
