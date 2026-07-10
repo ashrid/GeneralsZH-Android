@@ -844,3 +844,19 @@ After the fix the engine completes full init, creates the D3D device (DXVK → V
 enters `execute()` (the game loop). Note: the engine runs at ~4 GB RSS on a high-res tablet
 display (1904×3040); a Scudo "Can't populate more pages for size class 65552" warning may
 appear under memory pressure but is non-fatal.
+
+**4. Main menu renders — CONFIRMED (2026-07-10).** After fixes 1-3, the engine boots,
+completes full init, creates the D3D device (DXVK → Vulkan on Adreno), enters `execute()`,
+and **renders the in-game main menu** (verified by user on Lenovo TB322FC, Android 16).
+Screenshots: `on-device-screenshot.png` / `on-device-screenshot-early.png` in the repo root.
+
+**5. Remaining stability issues (after main menu, not blockers for the milestone):**
+- **DXVK SIGSEGV** — `signal 11 (SEGV_MAPERR), fault addr 0x15c in tid (dxvk-cs)`. A
+  null-pointer dereference in DXVK's command-stream thread during continued rendering. No
+  tombstone captured (`crash_dump64: failed to connected to tombstoned`). Needs backtrace
+  capture (reproduce + read `/data/tombstones/` via root) to identify the triggering D3D8 op.
+- **OOM during audio loading** (tombstone_09) — `OpenALAudioManager::playSample3D` →
+  `RAMFile::openFromArchive` → `operator new[](size)` → Scudo `MapAllocator` mmap fails
+  (`reportMapError`). `RAMFile` loads the entire audio file into RAM; cumulative cache usage
+  or a large file exhausts memory. Fix path: audio streaming (`StreamingArchiveFile`) or
+  cache eviction. Device has 15 GB RAM / 9.6 GB free; engine runs at ~4 GB RSS.
