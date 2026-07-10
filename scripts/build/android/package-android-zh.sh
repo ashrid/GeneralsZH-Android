@@ -40,6 +40,15 @@ case "$(uname -s)" in
     *) echo "ERROR: unsupported host OS: $(uname -s)" >&2; exit 1 ;;
 esac
 
+# GeneralsX @bugfix Claude 10/07/2026 Gradle's JdkImageTransform needs jlink (JDK-only);
+# the default java may be a JRE (no jlink — Gradle failed: jlink does not exist). Prefer
+# a JDK whose bin/jlink exists when JAVA_HOME is unset or points at a JRE.
+if [ -z "${JAVA_HOME:-}" ] || [ ! -x "${JAVA_HOME}/bin/jlink" ]; then
+	for _jdk in /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk /usr/lib/jvm/default-java; do
+		[ -x "${_jdk}/bin/jlink" ] && { export JAVA_HOME="${_jdk}"; break; }
+	done
+fi
+
 ABI="arm64-v8a"
 ANDROID_DIR="${REPO_ROOT}/android"
 APP_DIR="${ANDROID_DIR}/app"
