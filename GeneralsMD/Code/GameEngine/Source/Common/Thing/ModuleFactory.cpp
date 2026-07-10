@@ -300,6 +300,8 @@ ModuleFactory::ModuleFactory()
 ModuleFactory::~ModuleFactory()
 {
 	m_moduleTemplateMap.clear();
+	// GeneralsX @feature Claude 10/07/2026 Task 6 Oracle review: clear alias map for symmetry.
+	m_aliasMap.clear();
 
 	for (ModuleDataList::iterator i = m_moduleDataList.begin(); i != m_moduleDataList.end(); ++i)
 	{
@@ -600,8 +602,9 @@ ModuleData* ModuleFactory::newModuleDataFromINI(INI* ini, const AsciiString& nam
 /*static*/ NameKeyType ModuleFactory::makeDecoratedNameKey(const AsciiString& name, ModuleType type)
 {
 	char tmp[256];
-	tmp[0] = '0' + (int)type;
-	strcpy(&tmp[1], name.str());
+	// GeneralsX @security Claude 10/07/2026 Task 6 Oracle review: snprintf bounds-checks
+	// mod-supplied names (strcpy could overflow the 256-byte buffer on names >254 chars).
+	snprintf(tmp, sizeof(tmp), "%c%s", '0' + (int)type, name.str());
 	return TheNameKeyGenerator->nameToKey(tmp);
 }
 
@@ -619,6 +622,9 @@ const ModuleFactory::ModuleTemplate* ModuleFactory::findModuleTemplate(const Asc
 		if (a == m_aliasMap.end())
 			break;
 		namekey = a->second;
+		// GeneralsX @feature Claude 10/07/2026 Task 6 Oracle review: log hop-bound exhaustion.
+		if (hop == MAX_ALIAS_HOPS - 1)
+			DEBUG_LOG(("ModuleFactory: alias chain for '%s' exhausted %d hops (possible cycle)", name.str(), MAX_ALIAS_HOPS));
 	}
 
   ModuleTemplateMap::const_iterator it = m_moduleTemplateMap.find(namekey);
@@ -739,6 +745,11 @@ void ModuleFactory::addModuleAlias( const AsciiString& existingName, const Ascii
 		return;
 	}
 
+	// GeneralsX @feature Claude 10/07/2026 Task 6 Oracle review: design notes —
+	// (1) aliases must point to real templates (validated above), not other aliases, so
+	// alias-to-alias chains cannot be registered; the hop bound in findModuleTemplate is
+	// a safety net against external corruption. (2) if aliasName is itself a registered
+	// template, the alias intentionally shadows it (mod override semantics).
 	m_aliasMap[aliasKey] = existingKey;
 }
 
