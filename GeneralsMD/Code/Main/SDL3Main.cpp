@@ -322,7 +322,9 @@ int main(int argc, char* argv[])
 				__android_log_print(ANDROID_LOG_INFO, "GeneralsX", "CWD -> %s (external)", gameData);
 				chdirOk = true;
 			}
-			SDL_free((void*)extFiles);
+			// GeneralsX @bugfix Claude 10/07/2026 Do NOT SDL_free — SDL3 caches these path
+			// strings in statics; freeing corrupts the cache and the next call returns a
+			// dangling pointer → double-free (Scudo abort).
 		}
 		if (!chdirOk && files != nullptr) {
 			char gameData[1024];
@@ -347,7 +349,6 @@ int main(int argc, char* argv[])
 				setenv("GENERALSX_USER_CONFIG_PATH", configPath, 1);
 				__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
 					"User config path -> %s (sandboxed internal)", configPath);
-				SDL_free((void*)intStorage);
 			}
 		}
 
@@ -365,14 +366,12 @@ int main(int argc, char* argv[])
 			if (extFiles2 != nullptr) {
 				snprintf(fontsDir, sizeof(fontsDir), "%s/GameData/fonts", extFiles2);
 				extractBase = fontsDir;
-				SDL_free((void*)extFiles2);
 			}
 			if (extractBase == nullptr) {
 				const char *intFiles2 = SDL_GetAndroidInternalStoragePath();
 				if (intFiles2 != nullptr) {
 					snprintf(fontsDir, sizeof(fontsDir), "%s/GameData/fonts", intFiles2);
 					extractBase = fontsDir;
-					SDL_free((void*)intFiles2);
 				}
 			}
 
@@ -449,7 +448,6 @@ int main(int argc, char* argv[])
 			const char *cache = SDL_GetAndroidCachePath();
 			if (cache != nullptr) {
 				setenv("DXVK_STATE_CACHE_PATH", cache, 0);
-				SDL_free((void*)cache);
 			}
 			// Capped, filtered stderr file sink (post-mortem evidence after a kill).
 			char logPath[1100], prevPath[1100];
@@ -467,7 +465,6 @@ int main(int argc, char* argv[])
 				dup2(s_logFd, STDERR_FILENO);
 				setvbuf(stderr, nullptr, _IOLBF, 0);
 			}
-			SDL_free((void*)files);
 		}
 	}
 #elif defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
