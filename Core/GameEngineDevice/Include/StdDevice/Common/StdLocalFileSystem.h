@@ -52,6 +52,9 @@ public:
 #ifndef _WIN32
 	// GeneralsX @bugfix felipebraz 23/03/2026 Set the asset root as a fallback search directory for relative paths.
 	virtual void setAssetRootPath(const AsciiString& path) override;
+	// GeneralsX @feature Claude 10/07/2026 Task 13 (D8a): mod-directory loose-file fallback.
+	virtual void setAssetFallbackPaths(const std::vector<AsciiString>& paths) override;
+	virtual void clearAssetFallbackPaths() override;
 #endif
 
 protected:

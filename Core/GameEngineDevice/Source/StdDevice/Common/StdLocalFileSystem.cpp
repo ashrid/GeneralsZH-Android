@@ -41,6 +41,9 @@
 // The StdBIGFileSystem sets this after resolving the primary asset directory so that relative paths like
 // "Data\Scripts\SkirmishScripts.scb" can be found in the asset root when the cwd lookup fails.
 static std::filesystem::path s_assetFallbackPath;
+// GeneralsX @feature Claude 10/07/2026 Task 13 (D8a): additional fallback paths for mod
+// loose files. Checked after s_assetFallbackPath (primary asset root) and before archives.
+static std::vector<std::filesystem::path> s_assetFallbackPaths;
 #endif
 
 StdLocalFileSystem::StdLocalFileSystem() : LocalFileSystem()
@@ -84,8 +87,6 @@ static std::filesystem::path fixFilenameFromWindowsPath(const Char *filename, In
 
 			#ifdef __linux__
 			// GeneralsX @bugfix BenderAI 11/05/2026 Linux: resolve case-insensitive paths from asset root.
-			// Some cursor files are lowercase on disk (e.g. sccpointer.ani) while INI references mixed-case names.
-			// The existing case-insensitive traversal below only checks cwd, not the asset root fallback.
 			std::filesystem::path assetRootFixed = s_assetFallbackPath;
 			std::filesystem::path assetRootCurrent = s_assetFallbackPath;
 			bool assetRootFound = true;
@@ -130,6 +131,18 @@ static std::filesystem::path fixFilenameFromWindowsPath(const Char *filename, In
 				}
 			}
 			#endif
+		}
+
+		// GeneralsX @feature Claude 10/07/2026 Task 13 (D8a): check mod-directory fallback paths.
+		if (path.is_relative()) {
+			for (const auto& fb : s_assetFallbackPaths) {
+				std::filesystem::path modPath = fb / path;
+				std::error_code ecMod;
+				const bool modWriteParent = (access & File::WRITE) && std::filesystem::exists(modPath.parent_path(), ecMod);
+				if (std::filesystem::exists(modPath, ecMod) || modWriteParent) {
+					return modPath;
+				}
+			}
 		}
 		// Traverse path to try and match case-insensitively
 		std::filesystem::path parent = path.parent_path();
@@ -428,5 +441,21 @@ void StdLocalFileSystem::setAssetRootPath(const AsciiString& path)
 	std::replace(p.begin(), p.end(), '\\', '/');
 	s_assetFallbackPath = std::filesystem::path(std::move(p));
 	DEBUG_LOG(("StdLocalFileSystem::setAssetRootPath - asset fallback path set to '%s'", s_assetFallbackPath.string().c_str()));
+}
+
+void StdLocalFileSystem::setAssetFallbackPaths(const std::vector<AsciiString>& paths)
+{
+	s_assetFallbackPaths.clear();
+	for (const auto& p : paths)
+	{
+		std::string s(p.str());
+		std::replace(s.begin(), s.end(), '\\', '/');
+		s_assetFallbackPaths.emplace_back(std::move(s));
+	}
+}
+
+void StdLocalFileSystem::clearAssetFallbackPaths()
+{
+	s_assetFallbackPaths.clear();
 }
 #endif

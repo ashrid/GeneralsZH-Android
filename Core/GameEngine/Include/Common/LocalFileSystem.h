@@ -49,6 +49,12 @@ public:
 	// This no-op default allows Win32LocalFileSystem to inherit it unchanged.
 	virtual void setAssetRootPath(const AsciiString& /*path*/) {}
 
+	// GeneralsX @feature Claude 10/07/2026 Task 13 (D8a): mod-directory loose-file fallback.
+	// Additional paths checked after the primary asset root, before archives. Push mod
+	// dirs (e.g. modPath + "/Art", modPath + "/Data") so mod loose files resolve.
+	virtual void setAssetFallbackPaths(const std::vector<AsciiString>& /*paths*/) {}
+	virtual void clearAssetFallbackPaths() {}
+
 protected:
 };
 
