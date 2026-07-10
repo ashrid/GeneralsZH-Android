@@ -771,13 +771,37 @@ exceeds 512 MB) had two CRITICAL bugs found by Oracle review, both fixed (commit
 (alphabetical path), NOT true LRU — no access tracking exists. It runs on the allocating
 thread (main game thread in practice on Android); not safe to call from other threads.
 
-### 10.9 Verification matrix — PENDING
+### 10.9 Verification matrix — PENDING (on-device runbook)
 
-The 7-scenario logcat matrix (plan Task 4) has NOT been run. When the toolchain is
-provisioned and the APK built/installed, verify: (1) vanilla launch has no "Mod path"
-lines; (2) `mod.txt` produces `Mod path from mod.txt:` + `Injected -mod`; (3) Intent
-extra produces `Mod path from Intent extra:`; (4) Intent wins over `mod.txt`
-(precedence); (5) invalid path logs `Mod path not accessible, ignoring` and launches
-vanilla; (6) CRLF `mod.txt` is trimmed correctly; (7) loose override in `GameData/Art/`
-wins over archive content. Run with `adb logcat -G 16M` first (§6). Until these pass,
-this section documents intent, not verified behavior.
+The logcat matrix below has NOT been run (no device connected). When a tablet is
+available, execute each scenario in order and record the actual logcat line in the
+Result column. Any deviation from Expected → treat as a build failure (triage ladder).
+
+**Setup (once):**
+```bash
+BASE=/sdcard/Android/data/me.generalsx.zh/files/GameData
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+adb shell mkdir -p $BASE/Mods/Xenoforce $BASE/Data
+adb push "Data/*.big" $BASE/Data/
+adb logcat -G 16M          # enlarge buffer (§6) — CRITICAL, default 256KB overflows
+```
+
+| # | Scenario | Command | Expected logcat | Result |
+|---|----------|---------|-----------------|--------|
+| 1 | vanilla | `adb shell rm -f $BASE/mod.txt && adb shell am start -n me.generalsx.zh/.GameActivity` | no "Mod path" lines; main menu renders | _______ |
+| 2 | mod.txt | `adb shell "echo '$BASE/Mods/Xenoforce' > $BASE/mod.txt" && adb shell am start -n me.generalsx.zh/.GameActivity` | `Mod path from mod.txt:` + `Injected -mod` | _______ |
+| 3 | Intent extra | `adb shell rm -f $BASE/mod.txt && adb shell am start -n me.generalsx.zh/.GameActivity --es "mod" "$BASE/Mods/Xenoforce"` | `Mod path from Intent extra:` | _______ |
+| 4 | precedence | set mod.txt to Xenoforce, launch with `--es "mod" "$BASE/Mods/Contra"` (any 2nd dir) | `Mod path from Intent extra:` (Intent wins) | _______ |
+| 5 | invalid path | `adb shell am start -n me.generalsx.zh/.GameActivity --es "mod" "/sdcard/nonexistent"` | `Mod path not accessible, ignoring` + vanilla launch | _______ |
+| 6 | CRLF mod.txt | `adb shell "printf '$BASE/Mods/Xenoforce\r\n' > $BASE/mod.txt" && adb shell am start -n me.generalsx.zh/.GameActivity` | path trimmed correctly, mod loads | _______ |
+| 7 | loose override (GameData) | `adb push Art/ $BASE/Art/ && adb shell am start -n me.generalsx.zh/.GameActivity` (with mod active) | loose file in GameData/Art wins over archive | _______ |
+| 8 | mod picker GUI (Task 12) | launch vanilla, tap **Mods** button (bottom-left) | ModPickerMenu opens, lists Mods/Xenoforce | _______ |
+| 9 | mod picker activate | select a mod in the list, tap Activate | `mod.txt` written, menu pops | _______ |
+| 10 | mod-dir loose files (Task 13) | `adb push Art/ $BASE/Mods/Xenoforce/Art/ && adb shell am start ... --es "mod" "$BASE/Mods/Xenoforce"` | loose file in Mods/Xenoforce/Art resolves (overrides .big, not GameData loose) | _______ |
+
+**Capture per scenario:** `adb logcat -c && adb shell am start ... && adb logcat -d -s GeneralsX:V | tail -60`
+
+**Human eye-check (only the user can answer):** menu reached? mod content visible? no visual
+corruption? User pass → replace "PENDING" in the heading with "PASS" and fill the Result
+column with actual logcat lines. Until these pass, this section documents intent, not
+verified behavior.
