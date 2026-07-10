@@ -879,4 +879,9 @@ Verified on-device: logcat now shows `Initialized backend "opensl"`, `Created de
 NOT work (OpenAL ignores it). **Only streaming remains for real audio**: audio file loading is
 still skipped (`OpenALAudioCache::getBufferForFile` returns 0) to avoid the VmSize 19GB OOM
 (finding 5). Implement `StreamingArchiveFile` (or reduce DXVK virtual reservations) to load
-audio without OOM — then the opensl backend will produce actual sound.
+audio without OOM — then the opensl backend will produce actual sound. **Hard blocker**: the
+audio/video decoder (FFmpeg) is also disabled on Android — `RTS_BUILD_OPTION_FFMPEG=OFF`,
+`FFmpegFileStub.cpp` is compiled instead of `FFmpegFile.cpp`. FFmpeg can't be built for
+arm64-android (upstream vcpkg issue microsoft/vcpkg#33963). So real audio requires: (1) the
+opensl backend ✅ done (f9775f3bd), (2) a working FFmpeg build for arm64 (upstream-blocked),
+(3) streaming to avoid the OOM. The backend fix is in place for when FFmpeg is available.
