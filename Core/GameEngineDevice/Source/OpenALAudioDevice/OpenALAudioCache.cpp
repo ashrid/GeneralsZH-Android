@@ -90,6 +90,13 @@ OpenALAudioFileCache::~OpenALAudioFileCache()
 //-------------------------------------------------------------------------------------------------
 ALuint OpenALAudioFileCache::getBufferForFile(const OpenFileInfo &fileInfo)
 {
+#if defined(__ANDROID__)
+	// GeneralsX @bugfix Claude 10/07/2026 Audio playback doesn't work yet (OpenAL inits but no
+	// sound). Loading audio files into RAM via RAMFile triggers OOM (VmSize ~19GB virtual +
+	// the audio new[] mmap fails). Skip file loading — return no buffer. Costs no functionality
+	// (audio is silent anyway) and prevents the ~2.5min OOM crash.
+	return 0;
+#endif
 	AudioEventRTS *eventToOpenFrom = fileInfo.event;
 
 	AsciiString strToFind;
