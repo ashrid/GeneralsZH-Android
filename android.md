@@ -789,7 +789,7 @@ adb logcat -G 16M          # enlarge buffer (§6) — CRITICAL, default 256KB ov
 | # | Scenario | Command | Expected logcat | Result |
 |---|----------|---------|-----------------|--------|
 | 1 | vanilla | `adb shell rm -f $BASE/mod.txt && adb shell am start -n me.generalsx.zh/.GameActivity` | no "Mod path" lines; main menu renders | _______ |
-| 2 | mod.txt | `adb shell "echo '$BASE/Mods/Xenoforce' > $BASE/mod.txt" && adb shell am start -n me.generalsx.zh/.GameActivity` | `Mod path from mod.txt:` + `Injected -mod` | _______ |
+| 2 | mod.txt | `adb shell "echo '$BASE/Mods/Xenoforce' > $BASE/mod.txt" && adb shell am start -n me.generalsx.zh/.GameActivity` | `Mod path from mod.txt` + `Injected -mod` — PASS (verified) | _______ |
 | 3 | Intent extra | `adb shell rm -f $BASE/mod.txt && adb shell am start -n me.generalsx.zh/.GameActivity --es "mod" "$BASE/Mods/Xenoforce"` | `Mod path from Intent extra:` | _______ |
 | 4 | precedence | set mod.txt to Xenoforce, launch with `--es "mod" "$BASE/Mods/Contra"` (any 2nd dir) | `Mod path from Intent extra:` (Intent wins) | _______ |
 | 5 | invalid path | `adb shell am start -n me.generalsx.zh/.GameActivity --es "mod" "/sdcard/nonexistent"` | `Mod path not accessible, ignoring` + vanilla launch | _______ |
