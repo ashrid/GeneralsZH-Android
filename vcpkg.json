@@ -27,6 +27,10 @@
         "name": "ffmpeg",
         "platform": "ios",
         "features": ["avcodec", "avformat", "swscale", "swresample"]
+      },
+      {
+        "name": "doctest",
+        "platform": "!android"
       }
     ],
     "overrides": [

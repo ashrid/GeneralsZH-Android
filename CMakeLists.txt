@@ -163,3 +163,13 @@ endif()
 
 feature_summary(WHAT ENABLED_FEATURES DESCRIPTION "Enabled features:")
 feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:")
+
+# GeneralsX @feature Claude 10/07/2026 Task 8 (D1): adversarial test harness (doctest).
+# Gated by BUILD_TESTING (off by default; on for the linux64-deploy host test build via
+# -DBUILD_TESTING=ON). No-op for android-vulkan and other non-test presets.
+option(BUILD_TESTING "Build the testing tree (doctest adversarial harness)" OFF)
+if(BUILD_TESTING)
+	enable_testing()
+	include(CTest)
+	add_subdirectory(tests)
+endif()
