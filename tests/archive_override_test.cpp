@@ -80,6 +80,20 @@ TEST_CASE("overwrite=TRUE: newly-loaded archive wins (the override-precedence da
 	TestArchiveFile archiveB("B.big");
 	ArchivedFileInfo info;
 	info.m_archiveFilename = "test";
+	fprintf(stderr, "STEP: test nextToken isolation\n");
+	{
+		AsciiString ts = "Art\\foo.tga";
+		AsciiString tt;
+		ts.nextToken(&tt, "\\/");
+		fprintf(stderr, "STEP: nextToken result: '%s'\n", tt.str());
+	}
+	fprintf(stderr, "STEP: test map<AsciiString,int> isolation\n");
+	{
+		std::map<AsciiString, int> tm;
+		tm["Art"] = 1;
+		auto it = tm.find("Art");
+		fprintf(stderr, "STEP: map find: %d\n", it != tm.end() ? it->second : -1);
+	}
 	fprintf(stderr, "STEP: addFile A\n");
 	archiveA.addFile("Art\\foo.tga", &info);
 	fprintf(stderr, "STEP: addFile B\n");
