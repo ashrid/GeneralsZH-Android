@@ -711,7 +711,12 @@ with an 8-hop bound against circular aliases. This lets a mod refer to an existi
 module type by an alternative name without recompilation. **GeneralsMD only** — Zero
 Hour is the sole Android target. Note: `m_aliasMap` is not cleared by `reset()`/`init()`
 (both are no-ops by design); the ModManager (plan Task 9) must add alias teardown on
-mod unload or stale aliases from a previous mod will corrupt resolution.
+mod unload or stale aliases from a previous mod will corrupt resolution. Oracle review
+(2026-07-10) found and fixed a buffer overflow in `makeDecoratedNameKey`: it used `strcpy`
+into a 256-byte stack buffer with no length check — mod-supplied names >254 chars could
+overflow. Fixed with `snprintf`. Also added a DEBUG_LOG on 8-hop-bound exhaustion and
+documented that alias-to-alias chains are rejected (aliases must point to real templates)
+and that aliasing a name that is already a template intentionally shadows it (mod override).
 
 ### 10.6 Install workflow — Option C (archives + loose files)
 
