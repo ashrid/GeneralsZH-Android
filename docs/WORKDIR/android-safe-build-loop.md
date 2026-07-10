@@ -26,7 +26,7 @@ Grounded in: `docs/superpowers/specs/2026-07-08-android-mod-support-design.md` (
 
 1. **Migrate the repo into WSL.** In the current Windows checkout: commit or stash the pending state (modified `AGENTS.md`, untracked `codemap.md` files — user decides keep/drop at migration time). Then in WSL:
    `git clone /mnt/c/Users/force/.projects/GeneralsZH-Android ~/.projects/GeneralsZH-Android`
-   `cd ~/.projects/GeneralsZH-Android && git submodule update --init references/fbraz3-dxvk`
+   `cd ~/.projects/GeneralsZH-Android && git submodule update --init --recursive references/fbraz3-dxvk`
 2. **Provision the WSL toolchain:** Android NDK (export `ANDROID_NDK_HOME` in `~/.bashrc`), CMake ≥3.25, Ninja, Meson (DXVK-from-source), JDK 17 + Gradle wrapper deps, vcpkg per repo docs. Verify: `cmake --preset android-vulkan` configures cleanly.
 3. **Fix the build-dir mismatch** (decision: preset wins): in `scripts/build/android/package-android-zh.sh:34` set `BUILD_DIR="${REPO_ROOT}/build/android-vulkan"` and correct the false comment at lines 32–33 (the preset builds into `build/${presetName}`, i.e. `android-vulkan`, per `CMakePresets.json:287`). Annotate with the repo's `// GeneralsX @build` convention (shell: `# GeneralsX @build ...`).
 4. **Point the Windows mirror at WSL:** in the Windows checkout run

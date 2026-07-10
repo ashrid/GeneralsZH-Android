@@ -58,7 +58,7 @@ Gate: `cmake --preset android-vulkan` configures cleanly.
 
 - [ ] **Step 2: Init the DXVK submodule**
 
-Run: `git submodule update --init references/fbraz3-dxvk` (network).
+Run: `git submodule update --init --recursive references/fbraz3-dxvk` (network).
 
 - [ ] **Step 3: Fix the packager build-dir mismatch (decision already confirmed — don't re-ask)**
 

@@ -129,7 +129,7 @@ git clone https://github.com/tarek369/GeneralsZH-Android.git
 cd GeneralsZH-Android
 
 # Initialize the DXVK fork submodule
-git submodule update --init references/fbraz3-dxvk
+git submodule update --init --recursive references/fbraz3-dxvk
 
 # Configure + build the native engine (arm64-v8a)
 cmake --preset android-vulkan

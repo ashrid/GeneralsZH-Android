@@ -92,7 +92,7 @@ elseif(ANDROID)
       message(STATUS "DXVK Android: Patches/dxvk-android.patch already applied")
     endif()
   else()
-    message(FATAL_ERROR "Android DXVK requires the local fork submodule. Run: git submodule update --init references/fbraz3-dxvk")
+    message(FATAL_ERROR "Android DXVK requires the local fork submodule. Run: git submodule update --init --recursive references/fbraz3-dxvk")
   endif()
 
   set(DXVK_BUILD_DIR  "${CMAKE_BINARY_DIR}/_deps/dxvk-build-android")
@@ -218,7 +218,7 @@ elseif(APPLE AND SAGE_USE_MOLTENVK)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # The remote clone has no way to receive the iOS patch; a silent fallback
     # here previously produced dylibs that die at Vulkan init on device.
-    message(FATAL_ERROR "iOS DXVK requires the local fork submodule. Run: git submodule update --init references/fbraz3-dxvk")
+    message(FATAL_ERROR "iOS DXVK requires the local fork submodule. Run: git submodule update --init --recursive references/fbraz3-dxvk")
   else()
     set(DXVK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/dxvk-src-fbraz3")
     message(STATUS "DXVK macOS build: using GitHub source clone at ${DXVK_SOURCE_DIR}")

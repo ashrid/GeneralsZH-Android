@@ -58,7 +58,7 @@ if [[ ! -d "${ANDROID_NDK_HOME}" ]]; then
     exit 1
 fi
 if [[ ! -d "${REPO_ROOT}/references/fbraz3-dxvk/.git" ]]; then
-    echo "ERROR: DXVK fork submodule missing. Run: git submodule update --init references/fbraz3-dxvk"
+    echo "ERROR: DXVK fork submodule missing. Run: git submodule update --init --recursive references/fbraz3-dxvk"
     exit 1
 fi
 command -v gradle >/dev/null 2>&1 || command -v ./gradlew >/dev/null 2>&1 || {
