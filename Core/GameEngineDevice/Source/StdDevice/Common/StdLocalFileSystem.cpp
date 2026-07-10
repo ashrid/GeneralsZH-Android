@@ -66,6 +66,17 @@ static std::filesystem::path fixFilenameFromWindowsPath(const Char *filename, In
 	// Convert the filename to a std::filesystem::path and pass that
 	std::filesystem::path path(std::move(fixedFilename));
 
+#if defined(__ANDROID__)
+	// GeneralsX @bugfix Claude 10/07/2026 On Android, skip the case-insensitive std::filesystem
+	// resolution below. It causes heap corruption (Scudo "corrupted chunk header" during the
+	// std::filesystem::operator/ + directory_iterator path) — confirmed via heap probes proving
+	// the heap is clean before this function, and the crash vanishing when this early-return is
+	// added (engine then completes full init + creates D3D device + enters execute()). Android is
+	// case-sensitive, and .big archive lookups go through ArchiveFileSystem (which has its own
+	// case handling), so the loose-file case-insensitive traversal is not needed here.
+	return path;
+#endif
+
 #ifndef _WIN32
 	// check if the file exists to see if fixup is required
 	// if it's not found try to match disregarding case sensitivity
