@@ -15,6 +15,8 @@
 #include "Common/ArchiveFileSystem.h"
 #include "Common/ArchiveFile.h"
 #include "Common/GameMemory.h"
+#include <vector>
+#include <cstdio>
 
 // Stubs for engine symbols referenced by z_gameengine but defined in the app Main layer.
 // The test only exercises ArchiveFileSystem; these are no-ops.
@@ -106,4 +108,68 @@ TEST_CASE("overwrite=FALSE: first-loaded archive wins")
 	afs.loadIntoDirectoryTreePublic(&archiveA, FALSE);
 	afs.loadIntoDirectoryTreePublic(&archiveB, FALSE);
 	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveA);
+}
+
+TEST_CASE("getArchiveFile: returns correct archive, nullptr for nonexistent")
+{
+	ensureMemInit();
+	TestArchiveFileSystem afs;
+	TestArchiveFile archiveA("A.big");
+	ArchivedFileInfo info;
+	info.m_archiveFilename = "test";
+	info.m_filename = "foo.tga";
+	archiveA.addFileDirect("foo.tga", info);
+	afs.loadIntoDirectoryTreePublic(&archiveA, FALSE);
+	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveA);
+	REQUIRE(afs.getArchiveFile("nonexistent.tga") == nullptr);
+}
+
+TEST_CASE("empty archive: loadIntoDirectoryTree with no files does not crash")
+{
+	ensureMemInit();
+	TestArchiveFileSystem afs;
+	TestArchiveFile emptyArchive("empty.big");
+	afs.loadIntoDirectoryTreePublic(&emptyArchive, FALSE);
+	REQUIRE(afs.getArchiveFile("anything.tga") == nullptr);
+}
+
+TEST_CASE("order-sensitivity: 3 overlapping archives, overwrite=FALSE keeps first, then overwrite flips")
+{
+	ensureMemInit();
+	TestArchiveFileSystem afs;
+	TestArchiveFile archiveA("A.big");
+	TestArchiveFile archiveB("B.big");
+	TestArchiveFile archiveC("C.big");
+	ArchivedFileInfo info;
+	info.m_archiveFilename = "test";
+	info.m_filename = "foo.tga";
+	archiveA.addFileDirect("foo.tga", info);
+	archiveB.addFileDirect("foo.tga", info);
+	archiveC.addFileDirect("foo.tga", info);
+	afs.loadIntoDirectoryTreePublic(&archiveA, FALSE);
+	afs.loadIntoDirectoryTreePublic(&archiveB, FALSE);
+	afs.loadIntoDirectoryTreePublic(&archiveC, FALSE);
+	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveA);
+	afs.loadIntoDirectoryTreePublic(&archiveC, TRUE);
+	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveC);
+}
+
+TEST_CASE("stress: 1000 archives with same file, no crash, first wins")
+{
+	ensureMemInit();
+	TestArchiveFileSystem afs;
+	ArchivedFileInfo info;
+	info.m_archiveFilename = "test";
+	info.m_filename = "foo.tga";
+	std::vector<TestArchiveFile> archives;
+	archives.reserve(1000);
+	for (int i = 0; i < 1000; ++i)
+	{
+		char name[16];
+		snprintf(name, sizeof(name), "%d.big", i);
+		archives.emplace_back(name);
+		archives.back().addFileDirect("foo.tga", info);
+		afs.loadIntoDirectoryTreePublic(&archives.back(), FALSE);
+	}
+	REQUIRE(afs.getArchiveFile("foo.tga") == &archives[0]);
 }
