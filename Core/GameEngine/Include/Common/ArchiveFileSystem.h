@@ -148,6 +148,10 @@ public:
 
 	void loadMods();
 
+	// GeneralsX @feature Claude 10/07/2026 Task 9 (D3): ModManager API.
+	Bool unloadMod(const AsciiString& modPath);
+	Int  getOpenArchiveCount() const;
+
 	ArchivedDirectoryInfo* friend_getArchivedDirectoryInfo(const Char* directory);
 
 protected:
@@ -164,10 +168,25 @@ protected:
 
 	virtual void loadIntoDirectoryTree(ArchiveFile *archiveFile, Bool overwrite = FALSE);	///< load the archive file's header information and apply it to the global archive directory tree.
 
+	// GeneralsX @feature Claude 10/07/2026 Task 9 (D3): close-path helpers — remove an
+	// archive's entries from the directory tree (the inverse of loadIntoDirectoryTree).
+	void removeArchiveFromTree(ArchiveFile *archiveFile);
+	void removeArchiveFromDirInfo(ArchivedDirectoryInfo *dirInfo, ArchiveFile *archiveFile);
+
 	ArchiveFileMap m_archiveFileMap;
 	ArchivedDirectoryInfo m_rootDirectory;
 };
 
+// GeneralsX @feature Claude 10/07/2026 Task 9 (D3): ModRegistry — tracks active mods for load/unload.
+// TODO alias cleanup: when unloadMod runs, also clear ModuleFactory aliases the mod registered
+// (needs ModuleFactory::removeModuleAlias; see plan Task 9 review finding 2026-07-09).
+struct ModRegistry
+{
+	std::vector<AsciiString> m_activeMods;  ///< active mod paths, in load order
+	Bool loadMod(const AsciiString& path);
+	Bool unloadMod(const AsciiString& path);
+	Bool unloadAllMods();
+};
 
 extern ArchiveFileSystem *TheArchiveFileSystem;
 

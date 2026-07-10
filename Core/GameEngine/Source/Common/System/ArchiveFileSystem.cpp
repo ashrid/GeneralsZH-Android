@@ -224,6 +224,83 @@ void ArchiveFileSystem::loadIntoDirectoryTree(ArchiveFile *archiveFile, Bool ove
 	}
 }
 
+// GeneralsX @feature Claude 10/07/2026 Task 9 (D3): close path — the inverse of
+// loadIntoDirectoryTree. Removes an archive's entries from the directory tree so
+// closeArchiveFile can safely delete the ArchiveFile without dangling pointers.
+void ArchiveFileSystem::removeArchiveFromDirInfo(ArchivedDirectoryInfo *dirInfo, ArchiveFile *archiveFile)
+{
+	for (ArchivedFileLocationMap::iterator it = dirInfo->m_files.begin(); it != dirInfo->m_files.end(); )
+	{
+		if (it->second == archiveFile)
+			it = dirInfo->m_files.erase(it);
+		else
+			++it;
+	}
+	for (ArchivedDirectoryInfoMap::iterator it = dirInfo->m_directories.begin(); it != dirInfo->m_directories.end(); ++it)
+	{
+		removeArchiveFromDirInfo(&(it->second), archiveFile);
+	}
+}
+
+void ArchiveFileSystem::removeArchiveFromTree(ArchiveFile *archiveFile)
+{
+	removeArchiveFromDirInfo(&m_rootDirectory, archiveFile);
+}
+
+Bool ArchiveFileSystem::unloadMod(const AsciiString& modPath)
+{
+	ArchiveFileMap::iterator it = m_archiveFileMap.find(modPath);
+	if (it == m_archiveFileMap.end())
+		return FALSE;
+	ArchiveFile *archiveFile = it->second;
+	removeArchiveFromTree(archiveFile);
+	closeArchiveFile(modPath.str());
+	return TRUE;
+}
+
+Int ArchiveFileSystem::getOpenArchiveCount() const
+{
+	return (Int)m_archiveFileMap.size();
+}
+
+Bool ModRegistry::loadMod(const AsciiString& path)
+{
+	if (TheArchiveFileSystem == nullptr)
+		return FALSE;
+	m_activeMods.push_back(path);
+	return TRUE;
+}
+
+Bool ModRegistry::unloadMod(const AsciiString& path)
+{
+	if (TheArchiveFileSystem == nullptr)
+		return FALSE;
+	Bool ok = TheArchiveFileSystem->unloadMod(path);
+	if (ok)
+	{
+		for (std::vector<AsciiString>::iterator it = m_activeMods.begin(); it != m_activeMods.end(); ++it)
+		{
+			if (*it == path)
+			{
+				m_activeMods.erase(it);
+				break;
+			}
+		}
+	}
+	return ok;
+}
+
+Bool ModRegistry::unloadAllMods()
+{
+	Bool allOk = TRUE;
+	while (!m_activeMods.empty())
+	{
+		if (!unloadMod(m_activeMods.back()))
+			allOk = FALSE;
+	}
+	return allOk;
+}
+
 void ArchiveFileSystem::loadMods()
 {
 	if (TheGlobalData->m_modBIG.isNotEmpty())
