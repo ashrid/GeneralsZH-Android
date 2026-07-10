@@ -304,12 +304,11 @@ int main(int argc, char* argv[])
 	setenv("CNC_ZH_INSTALLPATH", ".", 0);
 	setenv("CNC_GENERALS_INSTALLPATH", ".", 0);
 	// GeneralsX @bugfix Claude 10/07/2026 OpenAL Soft defaults to the "null" backend on Android
-	// (no sound — logcat: "Created device ..., No Output"). The opensl (OpenSL ES) backend IS
-	// compiled in ("Supported backends: opensl, null, wave") but not selected. The config key is
-	// "drivers" in [general] (alc.cpp:595). TODO: provide an alsoft.conf with [general] drivers=opensl
-	// via ALSOFT_CONF, or find the env var that OpenAL Soft reads for this. (Audio file loading is
-	// also skipped — see OpenALAudioCache.cpp — to avoid the VmSize 19GB OOM; both need fixing for
-	// real audio.)
+	// (no sound — logcat: "Created device ..., No Output"). Force the opensl (OpenSL ES) backend
+	// via ALSOFT_DRIVERS (per OpenAL Soft docs/env-vars.txt: "overrides the drivers config option").
+	// Audio file loading is still skipped (OpenALAudioCache.cpp) to avoid the VmSize 19GB OOM —
+	// both this backend fix and streaming are needed for real audio.
+	setenv("ALSOFT_DRIVERS", "opensl", 0);
 	{
 		// GeneralsX @feature android-port 06/07/2026
 		// Try EXTERNAL storage first (adb-pushable, no root): the app's external

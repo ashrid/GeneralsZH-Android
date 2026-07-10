@@ -869,12 +869,14 @@ Screenshots: `on-device-screenshot.png` / `on-device-screenshot-early.png` in th
   allocation returning null). Future work for real audio: stream via `StreamingArchiveFile`
   instead of loading into RAM, or reduce DXVK virtual reservations.
 
-**6. Audio "no sound" root cause (identified, fix is future work).** OpenAL Soft (v1.24.2)
-defaults to the **"null"** backend on Android — logcat: `Initialized backend "null"`, `Created
-device ..., "No Output"`. The **opensl** (OpenSL ES) backend IS compiled in (`Supported
-backends: opensl, null, wave`) but is not selected. The config key is `drivers` in the
-`[general]` section (`alc.cpp:595`: `ConfigValueStr({}, {}, "drivers")`). Fix path: provide
-an `alsoft.conf` with `[general]\ndrivers = opensl` via the `ALSOFT_CONF` env var (the
-`ALSOFT_BACKEND` env var does NOT work — OpenAL ignores it). Documented as a TODO in
-`SDL3Main.cpp`. Note: even with the backend fixed, audio file loading is skipped (finding 5)
-to avoid the OOM — both the backend AND streaming need fixing for real audio.
+**6. Audio backend FIXED (opensl selected).** OpenAL Soft (v1.24.2) defaulted to the **"null"**
+backend on Android — logcat: `Initialized backend "null"`, `Created device ..., "No Output"`.
+The **opensl** (OpenSL ES) backend IS compiled in (`Supported backends: opensl, null, wave`)
+but was not selected. Fix: `setenv("ALSOFT_DRIVERS", "opensl", 0)` in `SDL3Main.cpp` (per
+OpenAL Soft `docs/env-vars.txt`: `ALSOFT_DRIVERS` "overrides the drivers config option").
+Verified on-device: logcat now shows `Initialized backend "opensl"`, `Created device ...,
+"OpenSL"`, `libOpenSLES: ...` (OpenSL ES active). The earlier `ALSOFT_BACKEND` attempt did
+NOT work (OpenAL ignores it). **Only streaming remains for real audio**: audio file loading is
+still skipped (`OpenALAudioCache::getBufferForFile` returns 0) to avoid the VmSize 19GB OOM
+(finding 5). Implement `StreamingArchiveFile` (or reduce DXVK virtual reservations) to load
+audio without OOM — then the opensl backend will produce actual sound.
