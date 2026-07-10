@@ -28,7 +28,7 @@
 #include "Common/GameMemoryNull.h"
 
 // GeneralsX @feature Claude 10/07/2026 Task 7 (D2): always-on RSS/fd telemetry for Android.
-// Logs process RSS (getrusage ru_maxrss — bionic reports BYTES, not KB, a footgun),
+// Logs process RSS (getrusage ru_maxrss — bionic reports KB, same as POSIX/glibc),
 // open fd count (/proc/self/fd), fd ceiling (getrlimit RLIMIT_NOFILE), and the DMA net
 // budget/peak — every ~30s via a background thread. Serves the memory-footprint
 // investigation (the iOS ~3GB question) and is a prerequisite for D6 (memory budget + LRU).
@@ -47,7 +47,7 @@ static void sampleProcessTelemetry()
 {
 	struct rusage ru;
 	getrusage(RUSAGE_SELF, &ru);
-	long rss = ru.ru_maxrss;  // bionic: BYTES (glibc would be KB)
+	long rss = ru.ru_maxrss;  // bionic: KB (same as POSIX/glibc — the plan's "bytes" note was wrong)
 
 	long fdCount = 0;
 	DIR *d = opendir("/proc/self/fd");
@@ -59,8 +59,8 @@ static void sampleProcessTelemetry()
 	long budget = theCurrentBudgetBytes.load();
 	long peak = thePeakBudgetBytes.load();
 	__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
-		"TELEMETRY: RSS=%ld B (%.1f MB)  fds=%ld/%ld  DMA budget=%ld B (%.1f MB)  peak=%ld B (%.1f MB)",
-		rss, rss / 1048576.0, fdCount, (long)rl.rlim_cur, budget, budget / 1048576.0, peak, peak / 1048576.0);
+		"TELEMETRY: RSS=%ld KB (%.1f MB)  fds=%ld/%ld  DMA budget=%ld B (%.1f MB)  peak=%ld B (%.1f MB)",
+		rss, rss / 1024.0, fdCount, (long)rl.rlim_cur, budget, budget / 1048576.0, peak, peak / 1048576.0);
 }
 
 static void *telemetrySamplerThread(void *)
