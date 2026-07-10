@@ -27,6 +27,49 @@
 
 #include "Common/GameMemoryNull.h"
 
+// GeneralsX @feature Claude 10/07/2026 Task 7 (D2): always-on RSS/fd telemetry for Android.
+// Logs process RSS (getrusage ru_maxrss — bionic reports BYTES, not KB, a footgun),
+// open fd count (/proc/self/fd), fd ceiling (getrlimit RLIMIT_NOFILE), and the DMA net
+// budget/peak — every ~30s via a background thread. Serves the memory-footprint
+// investigation (the iOS ~3GB question) and is a prerequisite for D6 (memory budget + LRU).
+#if defined(__ANDROID__)
+#include <sys/resource.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <atomic>
+#include <android/log.h>
+#define MEMORY_TELEMETRY_ENABLED 1
+static std::atomic<long> theCurrentBudgetBytes(0);
+static std::atomic<long> thePeakBudgetBytes(0);
+
+static void sampleProcessTelemetry()
+{
+	struct rusage ru;
+	getrusage(RUSAGE_SELF, &ru);
+	long rss = ru.ru_maxrss;  // bionic: BYTES (glibc would be KB)
+
+	long fdCount = 0;
+	DIR *d = opendir("/proc/self/fd");
+	if (d != nullptr) { struct dirent *e; while ((e = readdir(d)) != nullptr) if (e->d_name[0] != '.') ++fdCount; closedir(d); }
+
+	struct rlimit rl;
+	getrlimit(RLIMIT_NOFILE, &rl);
+
+	long budget = theCurrentBudgetBytes.load();
+	long peak = thePeakBudgetBytes.load();
+	__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
+		"TELEMETRY: RSS=%ld B (%.1f MB)  fds=%ld/%ld  DMA budget=%ld B (%.1f MB)  peak=%ld B (%.1f MB)",
+		rss, rss / 1048576.0, fdCount, (long)rl.rlim_cur, budget, budget / 1048576.0, peak, peak / 1048576.0);
+}
+
+static void *telemetrySamplerThread(void *)
+{
+	for (;;) { sleep(30); sampleProcessTelemetry(); }
+	return nullptr;
+}
+#endif
+
 static Bool theMainInitFlag = false;
 
 // ----------------------------------------------------------------------------
@@ -52,6 +95,12 @@ void *DynamicMemoryAllocator::allocateBytesDoNotZeroImplementation(Int numBytes)
 	void *p = malloc(numBytes);
 	if (p == nullptr)
 		throw ERROR_OUT_OF_MEMORY;
+#if defined(__ANDROID__)
+	// GeneralsX @feature Claude 10/07/2026 Task 7: track net DMA budget + peak.
+	long cur = (theCurrentBudgetBytes += (long)numBytes);
+	long prevPeak = thePeakBudgetBytes.load();
+	while (cur > prevPeak && !thePeakBudgetBytes.compare_exchange_weak(prevPeak, cur)) {}
+#endif
 	return p;
 }
 
@@ -72,6 +121,12 @@ void *DynamicMemoryAllocator::allocateBytesImplementation(Int numBytes)
 */
 void DynamicMemoryAllocator::freeBytes(void* pBlockPtr)
 {
+#if defined(__ANDROID__)
+	// GeneralsX @feature Claude 10/07/2026 Task 7: decrement budget. libc free() takes no
+	// size, so use malloc_usable_size (bionic) to recover the block's allocated size.
+	if (pBlockPtr != nullptr)
+		theCurrentBudgetBytes -= (long)malloc_usable_size(pBlockPtr);
+#endif
 	free(pBlockPtr);
 }
 
@@ -119,6 +174,14 @@ void initMemoryManager()
 
 		DEBUG_INIT(DEBUG_FLAGS_DEFAULT);
 		DEBUG_LOG(("*** Initialized the Null Memory Manager"));
+#if defined(__ANDROID__)
+		// GeneralsX @feature Claude 10/07/2026 Task 7: start the telemetry sampler
+		// (detached; logs RSS/fd/budget every ~30s) + an initial sample.
+		pthread_t _telemetryThread;
+		pthread_create(&_telemetryThread, nullptr, telemetrySamplerThread, nullptr);
+		pthread_detach(_telemetryThread);
+		sampleProcessTelemetry();
+#endif
 	}
 	else
 	{
