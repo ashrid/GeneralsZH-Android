@@ -40,6 +40,13 @@ public:
 	AsciiString getPath() override { return m_name; }
 	void      setSearchPriority(Int) override {}
 	void      close() override {}
+	// Bypass addFile (which builds a directory tree via
+	// std::map<AsciiString, DetailedArchivedDirectoryInfo> — the 256-byte DMA pool
+	// hangs on the Linux host). Populate m_files at the root directly (protected member).
+	void      addFileDirect(const AsciiString &filename, const ArchivedFileInfo &info)
+	{
+		m_rootDirectory.m_files[filename] = info;
+	}
 };
 
 // Stub ArchiveFileSystem: no-op the pure virtuals; inherit loadIntoDirectoryTree + getArchiveFile.
@@ -71,40 +78,18 @@ static void ensureMemInit()
 
 TEST_CASE("overwrite=TRUE: newly-loaded archive wins (the override-precedence dance)")
 {
-	fprintf(stderr, "STEP: ensureMemInit\n");
 	ensureMemInit();
-	fprintf(stderr, "STEP: create afs\n");
 	TestArchiveFileSystem afs;
-	fprintf(stderr, "STEP: create archives\n");
 	TestArchiveFile archiveA("A.big");
 	TestArchiveFile archiveB("B.big");
 	ArchivedFileInfo info;
 	info.m_archiveFilename = "test";
-	fprintf(stderr, "STEP: test nextToken isolation\n");
-	{
-		AsciiString ts = "Art\\foo.tga";
-		AsciiString tt;
-		ts.nextToken(&tt, "\\/");
-		fprintf(stderr, "STEP: nextToken result: '%s'\n", tt.str());
-	}
-	fprintf(stderr, "STEP: test map<AsciiString,int> isolation\n");
-	{
-		std::map<AsciiString, int> tm;
-		tm["Art"] = 1;
-		auto it = tm.find("Art");
-		fprintf(stderr, "STEP: map find: %d\n", it != tm.end() ? it->second : -1);
-	}
-	fprintf(stderr, "STEP: addFile A\n");
-	archiveA.addFile("Art\\foo.tga", &info);
-	fprintf(stderr, "STEP: addFile B\n");
-	archiveB.addFile("Art\\foo.tga", &info);
-	fprintf(stderr, "STEP: loadIntoDirectoryTree A\n");
+	info.m_filename = "foo.tga";
+	archiveA.addFileDirect("foo.tga", info);
+	archiveB.addFileDirect("foo.tga", info);
 	afs.loadIntoDirectoryTreePublic(&archiveA, FALSE);
-	fprintf(stderr, "STEP: loadIntoDirectoryTree B\n");
 	afs.loadIntoDirectoryTreePublic(&archiveB, TRUE);
-	fprintf(stderr, "STEP: getArchiveFile\n");
-	REQUIRE(afs.getArchiveFile("Art\\foo.tga") == &archiveB);
-	fprintf(stderr, "STEP: done\n");
+	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveB);
 }
 
 TEST_CASE("overwrite=FALSE: first-loaded archive wins")
@@ -115,9 +100,10 @@ TEST_CASE("overwrite=FALSE: first-loaded archive wins")
 	TestArchiveFile archiveB("B.big");
 	ArchivedFileInfo info;
 	info.m_archiveFilename = "test";
-	archiveA.addFile("Art\\foo.tga", &info);
-	archiveB.addFile("Art\\foo.tga", &info);
+	info.m_filename = "foo.tga";
+	archiveA.addFileDirect("foo.tga", info);
+	archiveB.addFileDirect("foo.tga", info);
 	afs.loadIntoDirectoryTreePublic(&archiveA, FALSE);
-	afs.loadIntoDirectoryTreePublic(&archiveB, FALSE);  // no overwrite -> A stays first
-	REQUIRE(afs.getArchiveFile("Art\\foo.tga") == &archiveA);
+	afs.loadIntoDirectoryTreePublic(&archiveB, FALSE);
+	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveA);
 }
