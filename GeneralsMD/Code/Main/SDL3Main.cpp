@@ -336,6 +336,21 @@ int main(int argc, char* argv[])
 			__android_log_print(ANDROID_LOG_WARN, "GeneralsX", "no GameData dir found, CWD unchanged");
 		}
 
+		// GeneralsX @feature Claude 10/07/2026 Task 10 (D4): route user-writable data
+		// (Save/, Replays/, prefs) to sandboxed internal storage. Zero new JNI.
+		{
+			const char *intStorage = SDL_GetAndroidInternalStoragePath();
+			if (intStorage != nullptr) {
+				char configPath[512];
+				snprintf(configPath, sizeof(configPath), "%s/config", intStorage);
+				mkdir(configPath, 0755);
+				setenv("GENERALSX_USER_CONFIG_PATH", configPath, 1);
+				__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
+					"User config path -> %s (sandboxed internal)", configPath);
+				SDL_free((void*)intStorage);
+			}
+		}
+
 		// GeneralsX @feature android-port 07/07/2026 Extract bundled fonts from
 		// APK assets to the GameData filesystem. Android APK assets are invisible
 		// to fopen()/access(), but the engine's FreeType font locator
