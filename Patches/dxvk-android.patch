@@ -1,8 +1,22 @@
 diff --git a/meson.build b/meson.build
-index 26afed45..abeacd3d 100644
+index 26afed45..b86b1e67 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -10,10 +10,6 @@ cc = meson.get_compiler('c')
+@@ -1,5 +1,13 @@
+ project('dxvk', ['c', 'cpp'], version : '2.6.0', meson_version : '>= 0.58', default_options : [ 'cpp_std=c++17', 'b_vscrt=static_from_buildtype', 'warning_level=2' ])
+ 
++# GeneralsX @bugfix Claude 10/07/2026 Expose VK_KHR_portability_subset (a Vulkan beta
++# extension). dxvk_adapter.cpp references VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME and
++# VkPhysicalDevicePortabilitySubsetFeaturesKHR, which vulkan_core.h only declares when
++# VK_ENABLE_BETA_EXTENSIONS is defined (it then #includes vulkan_beta.h). The cross-file
++# c_args variant of this define is NOT re-read by 'meson setup --reconfigure', so it must
++# live here in meson.build (which IS re-read on reconfigure).
++add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language: ['c', 'cpp'])
++
+ pkg = import('pkgconfig')
+ cpu_family = target_machine.cpu_family()
+ platform   = target_machine.system()
+@@ -10,10 +18,6 @@ cc = meson.get_compiler('c')
  dxvk_is_msvc = cpp.get_argument_syntax() == 'msvc'
  
  compiler_args = [
@@ -13,7 +27,7 @@ index 26afed45..abeacd3d 100644
    '-Wimplicit-fallthrough',
    # gcc
    '-Wno-missing-field-initializers',
-@@ -28,6 +24,16 @@ compiler_args = [
+@@ -28,6 +32,16 @@ compiler_args = [
    '-Wno-missing-braces',
  ]
  
