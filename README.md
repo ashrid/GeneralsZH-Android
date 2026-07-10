@@ -20,10 +20,57 @@ This is the **first-ever DXVK build for Android**.
 | DXVK D3D8→Vulkan rendering | ✅ |
 | Main menu renders with text | ✅ |
 | Touch input (tap, drag, pinch) | ✅ |
-| Audio playback | ❌ OpenAL initializes but no sound yet |
-| Full gameplay session (skirmish) | ✅ |
+| On-device stability (no crash) | ✅ stable past 170s (3 boot crashes fixed) |
+| Mod loading (`mod.txt` / Intent extra) | ✅ verified on-device |
+| Audio playback | ⚠️ Backend fixed (opensl); decoder blocked (FFmpeg can't build for arm64 — upstream vcpkg#33963) |
+| Full gameplay session (skirmish) | ✅ (OnePlus Pad 2) |
 
-**Tested on:** OnePlus Pad 2 (Snapdragon 8 Gen 3, Adreno 830, 3392×2400)
+**Tested on:**
+- OnePlus Pad 2 (Snapdragon 8 Gen 3, Adreno 830, 3392×2400)
+- Lenovo TB322FC (Android 16, Adreno, 1904×3040) — on-device debugging + crash fixes (2026-07-10)
+
+---
+
+## On-Device Debugging (2026-07-10) — Chain of Thought
+
+First real on-device run on the Lenovo TB322FC revealed three boot-blocker crashes.
+Each was root-caused, fixed, and verified. The chain of thought:
+
+1. **"Can't even start" → SDL_free double-free.** The engine SIGABRT'd during init.
+   Disassembly (`llvm-addr2line` on the crash PC) + SDL3 source reading revealed that
+   `SDL_GetAndroid{External,Internal,Cache}StoragePath` cache their results in
+   function-local **statics** — returning the SAME pointer every call. The bootstrap code
+   freed these after each use, corrupting SDL3's cache; the next call returned a dangling
+   pointer, and freeing it again was a double-free. **Fix:** remove all `SDL_free` calls
+   on path results (`d2cef9631`). → Engine now boots through full init.
+
+2. **"Boots but no main menu" → heap corruption.** After init, `Scudo ERROR: corrupted
+   chunk header`. HWASAN/ASan can't load via SDL3's dlopen model (TLS IE conflict); MTE
+   via `wrap` is ignored for non-debuggable apps; GWP-ASan is too probabilistic. Heap
+   probes (1000 malloc/free cycles between subsystems) proved the heap was *clean* before
+   `doesFileExist`. An **early-return diagnostic** (bypass the case-insensitive
+   `std::filesystem` resolution in `fixFilenameFromWindowsPath`) made the crash vanish →
+   the corruption was *inside* that std::filesystem code. **Fix:** early-return on
+   `__ANDROID__` (the resolution is unneeded — Android is case-sensitive; `.big` archives
+   handle lookups) (`8ceb2f690`). → Engine now renders the main menu.
+
+3. **"Renders but crashes after ~2.5 min" → OOM.** `Scudo ERROR: internal map failure
+   (Out of memory)`. The process reaches **VmSize ~19GB** (DXVK/Vulkan virtual
+   reservations) while RSS is only ~2.5GB. When the audio system loads a file into RAM
+   (`RAMFile::openFromArchive` → `new[]`), the mmap can't find contiguous space. **Fix:**
+   skip audio file loading on Android (`getBufferForFile` returns 0) — audio playback
+   doesn't work yet anyway (`dfe786d87`). → Engine now **stable past 170s**, no crash.
+
+4. **Audio "no sound" root cause → backend.** OpenAL Soft defaulted to the **null** backend
+   (`Created device "No Output"`). The opensl backend is compiled in but not selected.
+   **Fix:** `ALSOFT_DRIVERS=opensl` env var (`f9775f3bd`). Verified: `Initialized backend
+   "opensl"`, `Created device "OpenSL"`. (Real audio still needs FFmpeg — see Status.)
+
+**Key lesson:** when on-device sanitizers are unavailable (dlopen limitation), an
+**early-return diagnostic** that bypasses the suspected code path is the fastest isolation
+technique — if the crash moves or vanishes, you've found the culprit subsystem.
+
+Full details: [`android.md` §10.10](android.md) (findings 1-6, all root causes + fixes).
 
 ---
 
@@ -212,8 +259,8 @@ Getting a 2003 Windows DirectX 8 game running natively on Android required:
 │  Android Vulkan Driver (Adreno / Mali)        │
 ├──────────────────────────────────────────────┤
 │  Windowing: SDL3 (touch → synthetic mouse)    │
-│  Audio: OpenAL Soft                           │
-│  Video: FFmpeg (stubbed for now)              │
+│  Audio: OpenAL Soft (opensl backend via ALSOFT_DRIVERS) │
+│  Video: FFmpeg (stubbed — vcpkg ffmpeg:arm64-android broken, upstream #33963) │
 ├──────────────────────────────────────────────┤
 │  Android OS (arm64-v8a, API 24+)              │
 └──────────────────────────────────────────────┘

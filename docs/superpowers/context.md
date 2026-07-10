@@ -1,79 +1,149 @@
-# Context — Continue Android Mod Support Work
+# Context — Android Port On-Device Debugging
 
-**Last session:** 2026-07-09
-**To continue:** Read this file, then execute plan v2 Task 1 (see "Execute Next")
+**Last updated:** 2026-07-10 (after on-device debugging session)
+**State:** Main menu renders + stable on-device. 3 boot-blocker crashes fixed. Mod injection verified.
 
 ---
 
-## Where We Left Off
+## Current State
 
-Spec and plan are at **v2** (rewritten in place 2026-07-08 after both v1 documents failed adversarial review). No code has been written yet. Ready to execute the v2 plan.
+The engine boots, completes full init, creates the D3D device (DXVK→Vulkan on Adreno),
+enters `execute()`, and **renders the in-game main menu** — verified on a Lenovo TB322FC
+(Android 16, Adreno, 1904×3040). The engine is **stable past 170 seconds** (no crash).
+Mod loading (`mod.txt` → `-mod` injection → `loadMods`) is verified on-device.
 
-### Deliverables (current)
+All 13 on-device-debugging commits: `d2cef9631`..`35c56ba66`.
 
-1. `docs/superpowers/specs/2026-07-08-android-mod-support-design.md` — **Spec v2**: all four v1 review defects fixed
-2. `docs/superpowers/plans/2026-07-08-android-mod-architecture.md` — **Plan v2**: 5 baseline tasks + Deferred Backlog (D1–D8)
-3. `docs/superpowers/README.md` — planning workspace overview (written pre-v2; may still describe the v1 wave structure — verify before trusting)
+---
 
-### v1 → v2: What the Review Found and How v2 Fixed It
+## Chain of Thought — The Three Boot-Blocker Crashes
 
-| v1 defect | v2 fix |
-|-----------|--------|
-| `modPathBuf[512]` block-scoped but its pointer escapes into `__argv`, read later by `parseMod()` at `GameEngine::init` — dangling | Buffer (and everything escaping into `__argv`) is `static` |
-| Text said "Intent overrides mod.txt", code did the opposite | Code reads Intent extra FIRST; `mod.txt` is fallback. Text/code/tests agree |
-| Diagram claimed `-mod` parsed by `parseCommandLineForStartup` | Corrected: `-mod` is in `paramsForEngineInit` (`CommandLine.cpp:1179`), consumed at `GameEngine.cpp:540`, `loadMods()` at :543 |
-| Spec claimed loose `Art/`/`Data/` under mod dir resolve — false on every platform | Goal 3 rescoped: `.big` mods fully supported; loose overrides = documented merge-into-GameData workflow; engine-level mod-dir loose resolution = explicit Non-Goal |
-| Plan built 18 tasks on a baseline no task implemented; P5.1 already solved (`file_compat.h`); Wave 3 ran P5.2 concurrently with its dependency P3.1; "confirm resolved questions"; implemented spec Non-Goals (GUI, profiles, LRU) | Plan v2 = 5 tasks implementing only the spec baseline; v1 architecture preserved as Deferred Backlog D1–D8 with ordering fixed and P5.1 dropped |
+### Crash 1: "Can't even start" → SDL_free double-free
 
-### Key Verified Facts (re-verified against code 2026-07-08)
+**Symptom:** SIGABRT (`Scudo: invalid chunk state when deallocating`) during init, before
+any subsystem loaded.
 
-- `m_modDir` has exactly **three consumers**: `loadMods()` (`*.big` only, `ArchiveFileSystem.cpp:227-251`), video players (`FFmpegVideoPlayer.cpp:248`, stubbed on Android), `Win32Mouse.cpp:384` cursors (not compiled on Android). Loose mod-dir files never resolve — on any platform.
-- GameData `chdir()` happens at `SDL3Main.cpp:321-335` — before both parse calls, so `fopen("mod.txt")` relative to CWD works.
-- Existing static-buffer argv injection pattern (`-xres`/`-yres`): `SDL3Main.cpp:758-778`. It runs AFTER `parseCommandLineForStartup` (line 666) and works because those flags are engine-init-parsed. `-mod` injection goes BEFORE line 666 (also fine — startup parser skips unknown args).
-- Backslash bug in `parseMod()`: `GeneralsMD .../CommandLine.cpp:1091-1092`, identical in `Generals .../CommandLine.cpp:1089-1090`.
-- Multimap erase-and-reinsert override dance: `ArchiveFileSystem.cpp:158-183`.
+**Isolation:** `llvm-addr2line` on the crash PC → `SDL_main+628`. Disassembly showed the
+crash at a `bl SDL_free` call. The code called `SDL_GetAndroidExternalStoragePath()` etc.
+multiple times and freed each result.
 
-### Design Decisions Locked in v2
+**Root cause:** SDL3's `SDL_GetAndroid{External,Internal,Cache}StoragePath` cache their
+result in a **function-local static** (`SDL_android.c`) — returning the SAME pointer on
+every call. Freeing it corrupts SDL3's cache; the next call returns the dangling pointer;
+freeing it again is a double-free.
 
-| Decision | Choice |
+**Fix:** Remove all 6 `SDL_free` calls on path results (`d2cef9631`). These are
+process-lifetime cached strings that must never be freed.
+
+**Lesson:** SDL3's Android path functions cache in statics — contradicts SDL3's own docs
+which say to free them. Documented inline so no one re-adds the free.
+
+### Crash 2: "Boots but no main menu" → heap corruption in std::filesystem
+
+**Symptom:** After full init, `Scudo ERROR: corrupted chunk header`. Crash in
+`StdLocalFileSystem::doesFileExist` → `fixFilenameFromWindowsPath` →
+`std::filesystem::operator/` → `std::string::append` (the append's reallocation frees a
+buffer whose Scudo header is corrupted).
+
+**Isolation (the hard part — on-device sanitizers are all blocked):**
+- HWASAN/ASan: can't load via SDL3's dlopen model (`TLS symbol "(null)" ... IE access model`)
+- MTE via `wrap` property: ignored for non-debuggable apps
+- GWP-ASan: probabilistic, didn't catch it in 8 runs
+- Heap probes (1000 malloc/free cycles after each subsystem): **survived** — proving the
+  heap was clean *before* `doesFileExist`. This initially MISLED us into thinking the
+  corruption was from earlier `.big`/INI loading. (Key insight: probes only check the
+  *freed* chunk's own header, not adjacent overflowed chunks — so they can miss corruption
+  they don't directly free.)
+- **The breakthrough:** an early-return diagnostic in `fixFilenameFromWindowsPath` that
+  bypasses ALL the `std::filesystem` case-insensitive resolution code. The crash **vanished**.
+  → The corruption was *inside* the resolution code (operator/ + directory_iterator), not
+  from earlier loading.
+
+**Fix:** Early-return on `__ANDROID__` — return the plain path (backslashes already
+converted). The resolution is unneeded: Android is case-sensitive, and `.big` archive
+lookups go through `ArchiveFileSystem` (which has its own case handling) (`8ceb2f690`).
+
+**Lesson:** When sanitizers are unavailable, an **early-return diagnostic** that bypasses
+the suspected code path is the fastest isolation technique. Also: heap probes are
+inconclusive for overflow detection (they check freed-chunk headers, not adjacent ones) —
+don't over-trust a "clean" probe result.
+
+### Crash 3: "Renders but crashes after ~2.5 min" → OOM
+
+**Symptom:** `Scudo ERROR: internal map failure (error desc=Out of memory)` ~2.5 min after
+the main menu renders (when menu music starts). Tombstone: `RAMFile::openFromArchive` →
+`operator new[]` → Scudo `MapAllocator` mmap fails.
+
+**Root cause:** The process reaches **VmSize ~19GB** (virtual address space) while RSS is
+only ~2.5GB — DXVK/Vulkan reserves huge virtual ranges for GPU memory management. When the
+audio system loads a file into RAM (`RAMFile::openFromArchive` does `new[size]` for the
+entire file), Scudo's secondary allocator (mmap) can't find contiguous space. Device has
+15GB RAM / 9.6GB free; map count 26775/65530 (not at limit) — it's virtual-address
+fragmentation/exhaustion, not physical RAM.
+
+**Fix:** `OpenALAudioFileCache::getBufferForFile` returns 0 (no buffer) on Android — audio
+playback doesn't work yet anyway (no FFmpeg decoder), and skipping the RAM-intensive file
+load prevents the OOM (`dfe786d87`). → Engine now stable past 170s, no crash.
+
+### Bonus: Audio "no sound" root cause → null backend
+
+**Symptom:** README said "Audio playback ❌ no sound yet." OpenAL initializes but produces
+no audio.
+
+**Root cause:** OpenAL Soft (v1.24.2) defaulted to the **null** backend — logcat:
+`Initialized backend "null"`, `Created device "No Output"`. The **opensl** (OpenSL ES)
+backend IS compiled in (`Supported backends: opensl, null, wave`) but was not selected.
+
+**Fix attempt 1 (failed):** `ALSOFT_BACKEND=opensl` — OpenAL ignores this env var.
+**Fix attempt 2 (success):** `ALSOFT_DRIVERS=opensl` — found via OpenAL Soft
+`docs/env-vars.txt` ("overrides the drivers config option"). Verified: `Initialized backend
+"opensl"`, `Created device "OpenSL"`, `libOpenSLES` active (`f9775f3bd`).
+
+**Remaining audio blocker:** real audio needs FFmpeg (the audio/video decoder), which is
+**disabled** on Android (`RTS_BUILD_OPTION_FFMPEG=OFF`, `FFmpegFileStub.cpp` compiled).
+FFmpeg can't build for arm64-android — upstream vcpkg issue microsoft/vcpkg#33963. When
+FFmpeg is available + streaming is implemented (to avoid the OOM), the opensl backend will
+produce actual sound.
+
+---
+
+## What's Verified On-Device
+
+| Scenario | Result |
 |----------|--------|
-| Precedence | Intent extra `"mod"` (per-launch, explicit) > `GameData/mod.txt` (persistent default) |
-| argv modification | Static buffer pattern (NOT realloc — `__argv` is `main()`'s argv) |
-| Injection point | Inside `main()`, after GameData chdir, before `parseCommandLineForStartup()` (line 666) |
-| Path separator | `/` on non-Windows in `parseMod()` (`#ifdef _WIN32` split), both games |
-| Loose files | Merge into GameData tree (loose beats all archives); NOT switchable per-mod; engine change deferred (D8) |
-| TDD harness | Deferred (D1) — no test infra exists; verification = on-device logcat/behavior matrix |
-| mod.txt robustness | Trim trailing `\r\n`/spaces/tabs (Windows-edited files); `access(path, R_OK)` before injection |
+| Engine boots through full init | ✅ |
+| Loads all `.big` files + parses INI | ✅ |
+| Creates D3D device (DXVK→Vulkan on Adreno) | ✅ |
+| Main menu renders | ✅ (user confirmed) |
+| Stable past 170s (no crash) | ✅ |
+| Touch input delivered | ✅ (MotionEvent reaches GameActivity) |
+| Mod injection (`mod.txt` → `-mod` → `loadMods`) | ✅ (§10.9 scenario 2 PASS) |
+| OpenAL opensl backend selected | ✅ (`ALSOFT_DRIVERS=opensl`) |
 
-## Execute Next — Plan v2 Tasks (sequential)
+## What's Next
 
-1. **Task 1:** `parseMod()` POSIX separator fix (GeneralsMD + Generals CommandLine.cpp) → commit
-2. **Task 2:** Mod-path injection block in `SDL3Main.cpp` (complete code is in the plan/spec — use it verbatim) → commit
-3. **Task 3:** Build (`cmake --build build/android-vulkan --target z_generals`) + `bash scripts/build/android/package-android-zh.sh --install` (BUILD_DIR is `build/android-vulkan`, reconciled with the Gradle SDL3 srcDir)
-4. **Task 4:** 7-scenario on-device verification matrix (vanilla / mod.txt / Intent / precedence / invalid path / CRLF / loose-file workflow) — exact adb commands + expected logcat in the plan. Any deviation → stop and debug, don't proceed
-5. **Task 5:** Docs (android.md mod section with measured results, DEV_BLOG entry, README "Mods" subsection) → commit
+1. **Real audio** — BLOCKED upstream (FFmpeg vcpkg#33963). Backend (opensl) is fixed &
+   ready. When FFmpeg builds for arm64-android: re-enable `getBufferForFile` (undo the
+   `#if __ANDROID__ return 0`), implement `StreamingArchiveFile` to avoid the VmSize 19GB
+   OOM, then audio will play.
+2. **Verification matrix** (android.md §10.9) — scenarios 1, 3-10 not yet run. Scenario 2
+   (mod.txt) PASS. The rest need interactive menu testing (touch navigation).
+3. **Memory investigation** — VmSize 19GB is high (DXVK/Vulkan reservations). If stability
+   issues arise under memory pressure, investigate reducing DXVK virtual reservations
+   (dxvk.conf tuning) or thread stack sizes.
 
-Execution mode not yet chosen: subagent-driven (fresh subagent per task) vs inline. Ask the user or default to subagent-driven per the plan header.
+## Key Files Changed This Session
 
-## Deferred Backlog (do NOT execute; preserved decisions)
-
-D1 adversarial test harness · D2 RSS/fd telemetry · D3 ModManager/manifest/chains (BIG stays 32-bit on-disk, 64-bit in-memory) · D4 sandbox-safe config (strictly after D3) · D5 ModuleFactory alias seam (aliases only, no plugins) · D6 memory budget + LRU (graceful degradation) · D7 GUI/profiles/rollback/status (spec Non-Goals) · D8 engine loose-file resolution from mod dir (needs determinism review). Details in the plan's appendix.
+- `GeneralsMD/Code/Main/SDL3Main.cpp` — SDL_free fix + ALSOFT_DRIVERS=opensl
+- `Core/GameEngineDevice/Source/StdDevice/Common/StdLocalFileSystem.cpp` — std::filesystem bypass
+- `Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.cpp` — audio file load skip
+- `Core/GameEngineDevice/Source/StdDevice/Common/StdBIGFileSystem.cpp` — bounds-check + closeAllFiles
+- `android.md §10.10` — findings 1-6 (all root causes + fixes)
+- `android.md §10.9` — verification matrix (scenario 2 PASS)
 
 ## Non-Negotiable Invariants (DO NOT TOUCH)
 
 1. `ArchiveFileSystem.cpp:158-183` — multimap erase-and-reinsert dance
 2. `GameMemory.h/cpp` — magic cookie `0x47454d53`
 3. BIG on-disk format — 32-bit big-endian
-
-## Gotchas to Remember
-
-- `adb logcat -G 16M` before every debug session (default 256KB overflows)
-- `__argv` from `main()` is NOT heap — never `realloc`; every pointer escaping into it must be `static`
-- INI parser throws `int` enums, not `std::exception` — use `__android_log_print` diagnostics
-- DXVK `libdxvk_d3d8.so`/`libdxvk_d3d9.so` must NOT be stripped
-- File paths use `/` on Android, not `\`
-- `_stat`/`_S_IFDIR` portability is ALREADY solved (`file_compat.h` + define at `CommandLine.cpp:44`) — do not re-add a portability layer
-
-## Side Notes
-
-- 2026-07-09: user asked about `skill/grillme` — it does not exist anywhere on disk. Only reference is a dangling `skill(name="grill-me")` line at `~/.config/opencode/AGENTS.md:62` (OpenCode config, plan stress-testing tier). Options offered: recreate it, use the plan-reviewer agent instead, or remove the dangling reference. No decision yet.
+4. `libdxvk_d3d8.so`/`libdxvk_d3d9.so` must NOT be stripped (breaks Vulkan dispatch)
