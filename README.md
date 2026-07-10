@@ -162,9 +162,11 @@ The Intent extra takes precedence over `mod.txt`. If neither is present, the gam
 launches vanilla. Mod `.big` archives are loaded by the engine's existing
 `loadMods()` — no recompile needed to switch mods.
 
-**Loose files:** overrides under `$BASE/Mods/YourMod/` do **not** resolve
-automatically — only `.big` archives in the mod directory are loaded. To use loose
-files (textures, INI), merge them into the GameData tree directly.
+**Loose files:** overrides under `$BASE/Mods/YourMod/` (e.g. `Art/`, `Data/`) resolve
+automatically via `setAssetFallbackPaths`, which `loadMods()` wires when the mod dir
+is loaded. They override `.big` archive contents but not loose files already in the
+GameData root. Alternatively, merge loose files directly into the GameData tree (always
+active while present, but not switchable via `mod.txt`).
 
 ---
 
