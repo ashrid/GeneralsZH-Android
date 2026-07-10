@@ -147,6 +147,27 @@ of every bug found and fixed during the port.
 
 ---
 
+## Mods
+
+The engine supports mods via the `-mod <path>` command-line argument. On Android,
+this is wired through two mechanisms (see `android.md` §10 for full details):
+
+1. **`mod.txt`** (persistent default): write a mod's directory path to
+   `GameData/mod.txt` on the device. The engine reads it on launch and injects
+   `-mod <path>` automatically.
+
+2. **Intent extra** (per-launch override): `adb shell am start -n me.generalsx.zh/.GameActivity --es "mod" "/sdcard/Android/data/me.generalsx.zh/files/GameData/Mods/YourMod"`
+
+The Intent extra takes precedence over `mod.txt`. If neither is present, the game
+launches vanilla. Mod `.big` archives are loaded by the engine's existing
+`loadMods()` — no recompile needed to switch mods.
+
+**Loose files:** overrides under `$BASE/Mods/YourMod/` do **not** resolve
+automatically — only `.big` archives in the mod directory are loaded. To use loose
+files (textures, INI), merge them into the GameData tree directly.
+
+---
+
 ## What This Port Involved
 
 Getting a 2003 Windows DirectX 8 game running natively on Android required:
