@@ -830,16 +830,17 @@ current app (`u0_a305`) fell into "others" → no read access → `access(R_OK)`
 ("Operation not permitted"). Definitive fix: `su -c "chown -R u0_a305:u0_a305 .../GameData/"`
 (root required). After chown, the engine loads all `.big` files and parses INI successfully.
 
-**3. Heap corruption during GameEngine::init (CURRENT BLOCKER).** After `.big` loading and
-INI parsing succeed, the engine aborts with `Scudo ERROR: corrupted chunk header ... most
-likely due to memory corruption`. The crash is in `StdLocalFileSystem::doesFileExist` →
-`fixFilenameFromWindowsPath` → `std::filesystem::operator/` → `std::string::append` — the
-append triggers a reallocation whose free detects the corrupted chunk header. The actual
-overflow happens EARLIER (during `.big` loading or INI parsing) and is only detected here.
-This is a pre-existing engine bug (never reached before because the SDL_free crash happened
-first). HWASAN would pinpoint it but cannot be used: SDL3 `dlopen`s `libmain.so`, and the
-HWASAN runtime uses TLS IE access model which fails under dlopen (`TLS symbol "(null)" ...
-using IE access model`). The `SAGE_HWASAN` CMake option exists for future use but requires
-a non-dlopen loading model. Next step: build a native linux64 test that exercises `.big`
-loading with ASan (ASan works without dlopen on linux64) to catch the overflow at its
-source.
+**3. Heap corruption during GameEngine::init (FIXED, commit `8ceb2f690`).** After `.big`
+loading and INI parsing succeed, the engine aborted with `Scudo ERROR: corrupted chunk
+header`. The crash was in `StdLocalFileSystem::doesFileExist` → `fixFilenameFromWindowsPath`
+→ `std::filesystem::operator/`. Root cause: the case-insensitive std::filesystem resolution
+(`operator/` + `directory_iterator`) in `fixFilenameFromWindowsPath` corrupts the heap on
+Android — confirmed via heap probes proving the heap is clean before the function, and the
+crash vanishing when the resolution is bypassed. Fix: added an `#if defined(__ANDROID__)`
+early-return that returns the plain path (backslashes already converted). This is correct for
+Android — Android is case-sensitive, and `.big` archive lookups go through `ArchiveFileSystem`
+(which has its own case handling), so the loose-file case-insensitive traversal is not needed.
+After the fix the engine completes full init, creates the D3D device (DXVK → Vulkan), and
+enters `execute()` (the game loop). Note: the engine runs at ~4 GB RSS on a high-res tablet
+display (1904×3040); a Scudo "Can't populate more pages for size class 65552" warning may
+appear under memory pressure but is non-fatal.
