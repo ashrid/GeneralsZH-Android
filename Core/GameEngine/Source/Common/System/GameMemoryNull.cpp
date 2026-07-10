@@ -26,6 +26,7 @@
 #endif
 
 #include "Common/GameMemoryNull.h"
+#include "Common/ArchiveFileSystem.h"
 
 // GeneralsX @feature Claude 10/07/2026 Task 7 (D2): always-on RSS/fd telemetry for Android.
 // Logs process RSS (getrusage ru_maxrss — bionic reports KB, same as POSIX/glibc),
@@ -40,6 +41,7 @@
 #include <atomic>
 #include <android/log.h>
 #define MEMORY_TELEMETRY_ENABLED 1
+#define CNC_MEMORY_BUDGET_BYTES (512LL * 1024 * 1024) // 512 MB default budget
 static std::atomic<long> theCurrentBudgetBytes(0);
 static std::atomic<long> thePeakBudgetBytes(0);
 
@@ -100,6 +102,9 @@ void *DynamicMemoryAllocator::allocateBytesDoNotZeroImplementation(Int numBytes)
 	long cur = (theCurrentBudgetBytes += (long)numBytes);
 	long prevPeak = thePeakBudgetBytes.load();
 	while (cur > prevPeak && !thePeakBudgetBytes.compare_exchange_weak(prevPeak, cur)) {}
+	// GeneralsX @feature Claude 10/07/2026 Task 11 (D6): evict coldest mod archive if budget exceeded.
+	if (cur > CNC_MEMORY_BUDGET_BYTES && TheArchiveFileSystem != nullptr)
+		TheArchiveFileSystem->evictColdestModArchive();
 #endif
 	return p;
 }

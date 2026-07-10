@@ -151,6 +151,9 @@ public:
 	// GeneralsX @feature Claude 10/07/2026 Task 9 (D3): ModManager API.
 	Bool unloadMod(const AsciiString& modPath);
 	Int  getOpenArchiveCount() const;
+	// GeneralsX @feature Claude 10/07/2026 Task 11 (D6): evict the coldest (first loaded)
+	// mod archive when the memory budget is exceeded. System archives are never evicted.
+	Bool evictColdestModArchive();
 
 	ArchivedDirectoryInfo* friend_getArchivedDirectoryInfo(const Char* directory);
 

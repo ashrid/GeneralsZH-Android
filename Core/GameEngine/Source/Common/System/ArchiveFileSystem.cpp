@@ -263,6 +263,21 @@ Int ArchiveFileSystem::getOpenArchiveCount() const
 	return (Int)m_archiveFileMap.size();
 }
 
+Bool ArchiveFileSystem::evictColdestModArchive()
+{
+	for (ArchiveFileMap::iterator it = m_archiveFileMap.begin(); it != m_archiveFileMap.end(); ++it)
+	{
+		const char *path = it->first.str();
+		if (strstr(path, "Mods/") || strstr(path, "mods/") ||
+		    strstr(path, "Mods\\") || strstr(path, "mods\\"))
+		{
+			DEBUG_LOG(("ArchiveFileSystem::evictColdestModArchive - evicting '%s' (budget exceeded)", path));
+			return unloadMod(it->first);
+		}
+	}
+	return FALSE;
+}
+
 Bool ModRegistry::loadMod(const AsciiString& path)
 {
 	if (TheArchiveFileSystem == nullptr)
