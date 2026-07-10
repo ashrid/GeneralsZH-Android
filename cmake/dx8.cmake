@@ -60,7 +60,10 @@ elseif(ANDROID)
     set(ANDROID_PLATFORM "android-24")
   endif()
   # Strip the "android-" prefix for the NDK's clang wrapper name (aarch64-linux-android24-clang).
-  string(REGEX REPLACE "^android-" "" DXVK_ANDROID_API "${ANDROID_PLATFORM}")
+  # GeneralsX @bugfix Claude 10/07/2026 var must be named ANDROID_API to match the
+  # @ANDROID_API@ placeholder in meson-android-aarch64-cross.ini.in — a mismatch left it
+  # empty and produced aarch64-linux-android-clang (no API level), which NDK r27 doesn't ship.
+  string(REGEX REPLACE "^android-" "" ANDROID_API "${ANDROID_PLATFORM}")
 
   # The NDK prebuilt host-tag (darwin-x86_64 on macOS, linux-x86_64 on Linux).
   if(APPLE)
