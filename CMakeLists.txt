@@ -33,6 +33,14 @@ endif()
 # Top level project, doesn't really affect anything.
 project(genzh LANGUAGES C CXX)
 
+# GeneralsX @build Claude 10/07/2026 HWASAN toggle for heap-corruption debugging on arm64 Android.
+# cmake -DSAGE_HWASAN=ON --preset android-vulkan; ~2x memory overhead, catches overflows at source.
+option(SAGE_HWASAN "Enable HWASAN (Hardware-assisted Address Sanitizer) for arm64" OFF)
+if(SAGE_HWASAN)
+	add_compile_options(-fsanitize=hwaddress -fno-omit-frame-pointer -g)
+	add_link_options(-fsanitize=hwaddress)
+endif()
+
 # GeneralsX @build BenderAI 10/02/2026
 # Linux port: Make CompatLib headers globally accessible so Core libraries (WWLib, WWMath, etc.)
 # can access platform compatibility types when building for non-Windows platforms

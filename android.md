@@ -805,3 +805,41 @@ adb logcat -G 16M          # enlarge buffer (§6) — CRITICAL, default 256KB ov
 corruption? User pass → replace "PENDING" in the heading with "PASS" and fill the Result
 column with actual logcat lines. Until these pass, this section documents intent, not
 verified behavior.
+
+### 10.10 On-device debugging findings (2026-07-10, Lenovo TB322FC / Android 16)
+
+First real on-device run. Three findings, two fixed:
+
+**1. SDL_free double-free crash (FIXED, commit `d2cef9631`).** The app SIGABRT'd during
+init with `Scudo ERROR: invalid chunk state when deallocating`. Root cause: SDL3's
+`SDL_GetAndroidExternalStoragePath`, `SDL_GetAndroidInternalStoragePath`, and
+`SDL_GetAndroidCachePath` each cache their result in a function-local `static` and return
+the SAME pointer on every call (see `SDL_android.c`). The bootstrap code freed these after
+each use — corrupting SDL3's static cache. The next call returned the dangling pointer, and
+freeing it again was a double-free. Fixed by removing all 6 `SDL_free` calls on path
+results in `SDL3Main.cpp` (these are process-lifetime cached strings that must never be
+freed — documented inline since SDL3 docs misleadingly say to free them). After the fix the
+engine progresses through full init (critical sections, memory, Version, CommandLine,
+GameMain, FileSystem, ArchiveFileSystem, fonts extracted).
+
+**2. .big file ownership (FIXED via root `chown`).** The `.big` files pushed via `adb push`
+were owned by `u0_a202` (a stale UID from a previous app install) with `-rw-rw----`. The
+current app (`u0_a305`) fell into "others" → no read access → `access(R_OK)` failed on
+`GameData/` (silent chdir failure) and the engine couldn't read the archives. The directory
+`chmod go+rx` worked (dirs became traversable) but file `chmod` is rejected by sdcardfs
+("Operation not permitted"). Definitive fix: `su -c "chown -R u0_a305:u0_a305 .../GameData/"`
+(root required). After chown, the engine loads all `.big` files and parses INI successfully.
+
+**3. Heap corruption during GameEngine::init (CURRENT BLOCKER).** After `.big` loading and
+INI parsing succeed, the engine aborts with `Scudo ERROR: corrupted chunk header ... most
+likely due to memory corruption`. The crash is in `StdLocalFileSystem::doesFileExist` →
+`fixFilenameFromWindowsPath` → `std::filesystem::operator/` → `std::string::append` — the
+append triggers a reallocation whose free detects the corrupted chunk header. The actual
+overflow happens EARLIER (during `.big` loading or INI parsing) and is only detected here.
+This is a pre-existing engine bug (never reached before because the SDL_free crash happened
+first). HWASAN would pinpoint it but cannot be used: SDL3 `dlopen`s `libmain.so`, and the
+HWASAN runtime uses TLS IE access model which fails under dlopen (`TLS symbol "(null)" ...
+using IE access model`). The `SAGE_HWASAN` CMake option exists for future use but requires
+a non-dlopen loading model. Next step: build a native linux64 test that exercises `.big`
+loading with ASan (ASan works without dlopen on linux64) to catch the overflow at its
+source.
