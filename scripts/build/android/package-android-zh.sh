@@ -57,7 +57,9 @@ if [[ ! -d "${ANDROID_NDK_HOME}" ]]; then
     echo "ERROR: ANDROID_NDK_HOME not found: ${ANDROID_NDK_HOME}"
     exit 1
 fi
-if [[ ! -d "${REPO_ROOT}/references/fbraz3-dxvk/.git" ]]; then
+# GeneralsX @bugfix Claude 10/07/2026 use -e not -d: a submodule's .git is a FILE
+# (gitlink), not a directory, so -d always failed and aborted packaging.
+if [[ ! -e "${REPO_ROOT}/references/fbraz3-dxvk/.git" ]]; then
     echo "ERROR: DXVK fork submodule missing. Run: git submodule update --init --recursive references/fbraz3-dxvk"
     exit 1
 fi
