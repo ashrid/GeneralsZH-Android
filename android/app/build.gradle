@@ -101,6 +101,17 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    // GeneralsX @bugfix Claude 10/07/2026 The packager stages runtime .so (SDL3,
+    // SDL3_image, freetype, glm, openal, gamespy) into jniLibs/, but Gradle's
+    // externalNativeBuild (CMake) ALSO emits those as IMPORTED-target deps into
+    // .cxx/intermediates — mergeReleaseNativeLibs then failed with "2 files found
+    // with path lib/arm64-v8a/libSDL3.so". pickFirst resolves the (same-build) duplicate.
+    packagingOptions {
+        jniLibs {
+            pickFirst '**/*.so'
+        }
+    }
+
     // SDL3 native libs (libSDL3.so, libSDL3_image.so), DXVK (libdxvk_d3d8.so,
     // libdxvk_d3d9.so), and OpenAL (libopenal.so) are produced by the CMake
     // build and copied here by scripts/build/android/package-android-zh.sh.
