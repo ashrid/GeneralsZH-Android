@@ -91,7 +91,12 @@ TEST_CASE("overwrite=TRUE: newly-loaded archive wins (the override-precedence da
 	archiveB.addFileDirect("foo.tga", info);
 	afs.loadIntoDirectoryTreePublic(&archiveA, FALSE);
 	afs.loadIntoDirectoryTreePublic(&archiveB, TRUE);
-	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveB);
+	// GeneralsX @feature Claude 10/07/2026 Task 8 Oracle review: verify FULL ordering, not
+	// just the winner. B must be first AND A must still be present at index 1 (erased and
+	// reinserted after B, not lost). A plain multimap::insert that appends would leave A
+	// first — this catches that simplification.
+	REQUIRE(afs.getArchiveFile("foo.tga", 0) == &archiveB);
+	REQUIRE(afs.getArchiveFile("foo.tga", 1) == &archiveA);
 }
 
 TEST_CASE("overwrite=FALSE: first-loaded archive wins")
@@ -149,12 +154,15 @@ TEST_CASE("order-sensitivity: 3 overlapping archives, overwrite=FALSE keeps firs
 	afs.loadIntoDirectoryTreePublic(&archiveA, FALSE);
 	afs.loadIntoDirectoryTreePublic(&archiveB, FALSE);
 	afs.loadIntoDirectoryTreePublic(&archiveC, FALSE);
-	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveA);
+	// GeneralsX @feature Claude 10/07/2026 Task 8 Oracle review: verify full ordering A,B,C.
+	REQUIRE(afs.getArchiveFile("foo.tga", 0) == &archiveA);
+	REQUIRE(afs.getArchiveFile("foo.tga", 1) == &archiveB);
+	REQUIRE(afs.getArchiveFile("foo.tga", 2) == &archiveC);
 	afs.loadIntoDirectoryTreePublic(&archiveC, TRUE);
-	REQUIRE(afs.getArchiveFile("foo.tga") == &archiveC);
+	REQUIRE(afs.getArchiveFile("foo.tga", 0) == &archiveC);
 }
 
-TEST_CASE("stress: 1000 archives with same file, no crash, first wins")
+TEST_CASE("stress: 1000 archives with same file, no crash, first wins, then overwrite at scale")
 {
 	ensureMemInit();
 	TestArchiveFileSystem afs;
@@ -172,4 +180,25 @@ TEST_CASE("stress: 1000 archives with same file, no crash, first wins")
 		afs.loadIntoDirectoryTreePublic(&archives.back(), FALSE);
 	}
 	REQUIRE(afs.getArchiveFile("foo.tga") == &archives[0]);
+	// GeneralsX @feature Claude 10/07/2026 Task 8 Oracle review: exercise overwrite=TRUE at scale.
+	afs.loadIntoDirectoryTreePublic(&archives[999], TRUE);
+	REQUIRE(afs.getArchiveFile("foo.tga") == &archives[999]);
+}
+
+TEST_CASE("malformed entries: empty/slashes-only filenames do not crash loadIntoDirectoryTree")
+{
+	ensureMemInit();
+	TestArchiveFileSystem afs;
+	TestArchiveFile malformed("malformed.big");
+	ArchivedFileInfo info;
+	info.m_archiveFilename = "test";
+	info.m_filename = "";
+	malformed.addFileDirect("", info);
+	info.m_filename = "/";
+	malformed.addFileDirect("/", info);
+	info.m_filename = "//";
+	malformed.addFileDirect("//", info);
+	// Reaching here means loadIntoDirectoryTree did not crash on malformed entries.
+	afs.loadIntoDirectoryTreePublic(&malformed, FALSE);
+	REQUIRE(true);
 }
