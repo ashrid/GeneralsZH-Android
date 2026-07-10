@@ -94,7 +94,9 @@ copy_if_exists "${BUILD_DIR}/libdxvk_d3d9.so"   "libdxvk_d3d9.so"
 copy_if_exists "${BUILD_DIR}/_deps/sdl3-build/libSDL3.so"        "libSDL3.so"
 copy_if_exists "${BUILD_DIR}/_deps/sdl3_image-build/libSDL3_image.so" "libSDL3_image.so"
 # OpenAL (FetchContent build).
-copy_if_exists "${BUILD_DIR}/openal-soft/libopenal.so" "libopenal.so"
+# GeneralsX @bugfix Claude 10/07/2026 OpenAL builds to _deps/openal_soft-build/ (FetchContent),
+# not ${BUILD_DIR}/openal-soft/ — the old path silently missed it (dlopen crash at launch).
+copy_if_exists "${BUILD_DIR}/_deps/openal_soft-build/libopenal.so" "libopenal.so"
 # FreeType (FetchContent build — engine dlopens it for font rendering).
 copy_if_exists "${BUILD_DIR}/_deps/freetype-build/libfreetype.so" "libfreetype.so"
 # GLM (FetchContent build — engine dlopens it for matrix math).
