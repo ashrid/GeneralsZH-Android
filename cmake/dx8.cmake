@@ -115,6 +115,20 @@ Version: 3.4.2
 Libs: -L\${libdir} -lSDL3
 Cflags: -I\${includedir}
 ")
+  # GeneralsX @bugfix Claude 10/07/2026 DXVK meson.build:156 calls dependency('SDL3')
+  # (capital), so pkg-config queries SDL3.pc — the lowercase sdl3.pc above is invisible to
+  # that query (pkg-config matches by filename). Write a capital-name twin so both resolve.
+  file(WRITE "${DXVK_SDL3_PC_DIR}/SDL3.pc"
+"prefix=${CMAKE_BINARY_DIR}/_deps
+libdir=\${prefix}/sdl3-build
+includedir=\${prefix}/sdl3-src/include
+
+Name: SDL3
+Description: Simple DirectMedia Layer (in-tree FetchContent build)
+Version: 3.4.2
+Libs: -L\${libdir} -lSDL3
+Cflags: -I\${includedir}
+")
   if(DEFINED ENV{PKG_CONFIG_PATH})
     set(DXVK_PKG_CONFIG_PATH "${DXVK_SDL3_PC_DIR}:$ENV{PKG_CONFIG_PATH}")
   else()
