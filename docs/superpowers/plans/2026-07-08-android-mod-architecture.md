@@ -359,12 +359,18 @@ Expected: the loose override is visible in-game (loose files beat all archives �
 
 Runs only after the Task 4 brief comes back pass. ONE commit closes the run (workflow step 7: docs update before the closing commit of a run, not every commit).
 
+> **Status (2026-07-10):** Device-independent docs are DONE (android.md §10.4/10.6/10.7/10.8
+> + DEV_BLOG entry, commit `539dc302f`). The loose-file contract was updated to reflect
+> Task 13 (D8a): mod-dir loose files now resolve via `setAssetFallbackPaths`. Only the
+> verification-matrix results (Step 1's Task 4 portion) remain, gated on a connected device.
+
 **Files:**
 - Modify: `android.md` — new "Mod support" section
 - Modify: `docs/DEV_BLOG/2026-07-DIARY.md` — entry for 08/07/2026
 - Modify: `README.md` — short "Mods" subsection under install instructions
 
-- [ ] **Step 1: android.md section** — document: the injection point and precedence (Intent > mod.txt), the static-buffer lifetime rule, the loose-file contract (merge into GameData tree; `m_modDir` loose files do NOT resolve — only `loadMods` `*.big`, video players (stubbed), Win32 cursors (not compiled)), the verification matrix results from Task 4, and the Option C full-install commands from the spec.
+- [x] **Step 1: android.md section (device-independent portion DONE)** — document: the injection point and precedence (Intent > mod.txt), the static-buffer lifetime rule, the loose-file contract (Task 13/D8a now IMPLEMENTED: mod-dir loose files resolve via `setAssetFallbackPaths`, wired in `loadMods()`; `.big` archives still via `loadBigFilesFromDirectory`; video players stubbed; Win32 cursors not compiled). Verification matrix results from Task 4 — PENDING (device-blocked). Option C full-install commands — DONE.
+- [ ] **Step 1 (remaining): verification matrix results** — gated on Task 4 on-device logcat.
 
 - [ ] **Step 2: DEV_BLOG entry** — what shipped, the v1→v2 review findings (dangling pointer, precedence contradiction, wrong parse stage, loose-file gap), links to spec/plan v2.
 
