@@ -273,18 +273,17 @@ Bool ModRegistry::loadMod(const AsciiString& path)
 
 Bool ModRegistry::unloadMod(const AsciiString& path)
 {
-	if (TheArchiveFileSystem == nullptr)
-		return FALSE;
-	Bool ok = TheArchiveFileSystem->unloadMod(path);
-	if (ok)
+	Bool ok = FALSE;
+	if (TheArchiveFileSystem != nullptr)
+		ok = TheArchiveFileSystem->unloadMod(path);
+	// Always remove from tracking, even if the underlying unload failed — prevents
+	// unloadAllMods from spinning forever on an orphaned entry (Oracle review finding).
+	for (std::vector<AsciiString>::iterator it = m_activeMods.begin(); it != m_activeMods.end(); ++it)
 	{
-		for (std::vector<AsciiString>::iterator it = m_activeMods.begin(); it != m_activeMods.end(); ++it)
+		if (*it == path)
 		{
-			if (*it == path)
-			{
-				m_activeMods.erase(it);
-				break;
-			}
+			m_activeMods.erase(it);
+			break;
 		}
 	}
 	return ok;
