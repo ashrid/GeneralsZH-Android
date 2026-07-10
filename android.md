@@ -396,6 +396,20 @@ synthetic mouse pipeline. Tapping menu buttons triggers UI responses
 
 **No code changes needed** — the existing implementation works correctly.
 
+### 4.9 ✅ DXVK submodule must be init'd recursively (nested header submodules)
+
+The `fbraz3-dxvk` fork nests four header submodules under itself:
+- `include/native/directx` → `Joshua-Ashton/mingw-directx-headers` (provides `d3d8.h`, `d3d9.h`)
+- `include/spirv` → `KhronosGroup/SPIRV-Headers`
+- `include/vulkan` → `KhronosGroup/Vulkan-Headers`
+- `subprojects/libdisplay-info` → `libdisplay-info`
+
+A plain `git submodule update --init references/fbraz3-dxvk` leaves these uninitialized, so `include/native/directx/` is empty and the arm64 build fails at `Generals/Code/CompatLib/Include/d3dx8core.h:12` with `fatal error: 'd3d8.h' file not found`. **Fix:** always init recursively — `git submodule update --init --recursive references/fbraz3-dxvk`. All repo docs/error messages now say `--recursive` (commit `474bf2d39`).
+
+### 4.10 ✅ FFmpeg host-contamination in the android-vulkan preset
+
+The `android-vulkan` preset had `RTS_BUILD_OPTION_FFMPEG=ON`, violating AGENTS.md (FFmpeg must be `OFF` for Android — vcpkg `ffmpeg:arm64-android` is broken, microsoft/vcpkg#33963; video is stubbed via the Bink stub). With `ON`, the guarded `pkg_check_modules(FFMPEG REQUIRED ...)` at `Core/GameEngineDevice/CMakeLists.txt:289` found the **host** x86_64 FFmpeg via pkg-config and injected `/usr/include/x86_64-linux-gnu` into the arm64 compile commands, pulling host glibc `sys/cdefs.h` → `__GNUC_PREREQ` macro cascade → build failure. The preset also cleared `PKG_CONFIG_PATH` but not `PKG_CONFIG_LIBDIR`, so pkg-config fell back to host `/usr/lib/x86_64-linux-gnu/pkgconfig` (also found DBUS). **Fix** (commit `26c6db4e0`): preset `RTS_BUILD_OPTION_FFMPEG=OFF` (skips the guarded find entirely) + `PKG_CONFIG_LIBDIR=""` in the preset environment (fully isolates the Android cross-compile from host pkg-config).
+
 ---
 
 ## 5. Bugs Found and Fixed (Earlier in the Port)
