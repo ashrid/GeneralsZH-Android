@@ -166,4 +166,10 @@ configurations.configureEach {
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
+
+    // GeneralsX @feature android-port 30/07/2026 JVM unit tests for Android-free
+    // helpers (e.g. ScriptImporter). AGP supplies the testImplementation
+    // configuration for src/test/java; JUnit 4 is the runner. These tests run
+    // on the host JVM (testDebugUnitTest) and never touch a device.
+    testImplementation 'junit:junit:4.13.2'
 }
