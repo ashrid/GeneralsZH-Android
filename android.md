@@ -616,6 +616,9 @@ definition and reference use the exact same string.
 | `GeneralsMD/Code/Main/SDL3Main.cpp` | Android entry point, VFS, env vars, font extraction |
 | `GeneralsMD/Code/Main/CMakeLists.txt` | Android libmain.so, -llog, -landroid |
 | `GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp` | Touch event dispatch (SAGE_MOBILE), diagnostics |
+| `android/app/src/main/java/me/generalsx/zh/GameActivity.java` | Holds SDL native startup while the user selects their legal skirmish script with `ACTION_OPEN_DOCUMENT`, and releases the wait gate if the picker is unavailable |
+| `android/app/src/main/java/me/generalsx/zh/ScriptImporter.java` | Rejects empty sources and imports through a same-directory `FileOutputStream` temporary file followed by a rename |
+| `android/app/src/test/java/me/generalsx/zh/ScriptImporterTest.java` | Host JVM coverage for empty-source rejection, byte-preserving import, and existing-destination replacement |
 
 ---
 
@@ -885,3 +888,22 @@ audio/video decoder (FFmpeg) is also disabled on Android — `RTS_BUILD_OPTION_F
 arm64-android (upstream vcpkg issue microsoft/vcpkg#33963). So real audio requires: (1) the
 opensl backend ✅ done (f9775f3bd), (2) a working FFmpeg build for arm64 (upstream-blocked),
 (3) streaming to avoid the OOM. The backend fix is in place for when FFmpeg is available.
+
+### 10.11 Skirmish AI restored — SAF script import + on-device verification (2026-07-30, Lenovo TB322FC / Android 16)
+
+The neutral AI was caused by a missing loose `Data/Scripts/SkirmishScripts.scb`. Android 16
+prevents ADB from writing app-owned external storage, so `GameActivity` holds back SDL native
+startup while the user selects their own legal script with `ACTION_OPEN_DOCUMENT`. `ScriptImporter`
+rejects an empty source, then imports through a same-directory temporary file with `FileOutputStream`
+and a same-directory rename. Production source no longer uses the importer-specific `java.nio.file`
+APIs, which require API 26 while minSdk is 24. Host JVM tests cover empty-source rejection,
+byte-preserving import, and replacing an existing destination. `GameActivity` catches
+`ActivityNotFoundException` from the picker launch and releases the SDL wait gate. The selected
+source is not bundled or distributed.
+
+On device, `SkirmishScripts.scb` opened successfully and parsed 14 skirmish side definitions.
+`SkirmishAmerica1` reported `buildListCount=18`, `scripts=323`, and `skirmishBuildScripts=35`.
+Its build orders requested Power Plant at frame 0, Barracks at frame 874, and War Factory at frame
+1430. A packaged release APK was smoke-tested to the main menu on the Lenovo TB322FC. The
+exceptional picker path was not runtime-forced. Full Gradle lint remains blocked by existing project
+lint-model and SDL issues, not by this repair. A full win-condition session was not captured.
