@@ -29,6 +29,7 @@
 #include "Common/AudioAffect.h"
 #include "Common/ArchiveFile.h"
 #include "Common/ArchiveFileSystem.h"
+#include "Common/GeneralsXArchiveFilter.h"
 #include "Common/file.h"
 #include "Common/GameAudio.h"
 #include "Common/GameMemory.h"
@@ -287,7 +288,7 @@ static Bool tryLoadBigFiles(TBigFileSystem* fileSystem, const AsciiString& direc
 	}
 
 	DEBUG_LOG(("StdBIGFileSystem::init - trying '%s' assets directory: %s", sourceTag, directory.str()));
-	const Bool loaded = fileSystem->loadBigFilesFromDirectory(directory, "*.big", overwrite);
+	const Bool loaded = fileSystem->loadBigFilesFromDirectory(directory, "*.big", overwrite, /*retailScan=*/TRUE);
 	if (loaded) {
 		DEBUG_LOG(("StdBIGFileSystem::init - loaded BIG files from %s (%s)", directory.str(), sourceTag));
 	}
@@ -416,7 +417,7 @@ static Bool loadPrimaryGameAssets(TBigFileSystem* fileSystem, AsciiString* loade
 	}
 
 	DEBUG_LOG(("StdBIGFileSystem::init - trying current working directory as last-resort assets path"));
-	if (fileSystem->loadBigFilesFromDirectory("", "*.big", TRUE)) {
+	if (fileSystem->loadBigFilesFromDirectory("", "*.big", TRUE, /*retailScan=*/TRUE)) {
 		fprintf(stderr, "[ASSET_ROOT] Selected source=current-working-directory\n");
 		if (loadedDirectory != nullptr) {
 			*loadedDirectory = AsciiString::TheEmptyString;
@@ -659,7 +660,10 @@ void StdBIGFileSystem::closeAllArchiveFiles() {
 void StdBIGFileSystem::closeAllFiles() {
 }
 
-Bool StdBIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fileMask, Bool overwrite) {
+Bool StdBIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fileMask, Bool overwrite, Bool retailScan) {
+#ifndef __ANDROID__
+	(void)retailScan; // consumed only by the Android branch below
+#endif
 
 	FilenameList filenameList;
 	TheLocalFileSystem->getFileListInDirectory(dir, "", fileMask, filenameList, TRUE);
@@ -667,7 +671,18 @@ Bool StdBIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fi
 	Bool actuallyAdded = FALSE;
 	FilenameListIter it = filenameList.begin();
 	while (it != filenameList.end()) {
-#if RTS_ZEROHOUR
+#if defined(__ANDROID__)
+		// GeneralsX @feature Claude 31/07/2026 Android mod-file hierarchy. During primary
+		// (retail) discovery (retailScan=TRUE) exclude the scan root's top-level Mods/ subtree so
+		// inactive mods are never mounted, and apply the Data/INI/INIZH.big duplicate CRC skip
+		// only to retail discovery (a selected mod's own INIZH.big must load). The selected-mod
+		// sweep calls this with retailScan=FALSE and skips nothing. Pure fixed-buffer predicate
+		// (no std::filesystem — Scudo heap-corruption hazard on Android; see androidLooseFileHit).
+		if (GeneralsX_ShouldSkipArchiveEntry(it->str(), dir.str(), retailScan)) {
+			it++;
+			continue;
+		}
+#elif RTS_ZEROHOUR
 		// TheSuperHackers @bugfix bobtista 18/11/2025 Skip duplicate INIZH.big in Data\INI to prevent CRC mismatches.
 		// English, Chinese, and Korean SKUs shipped with two INIZH.big files (one in Run directory, one in Run\Data\INI).
 		// The DeleteFile cleanup doesn't work on EA App/Origin installs because the folder is not writable, so we skip loading it instead.
