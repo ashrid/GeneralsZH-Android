@@ -723,6 +723,12 @@ and that aliasing a name that is already a template intentionally shadows it (mo
 
 ### 10.6 Install workflow — Option C (archives + loose files)
 
+> **Android 16 notice, 2026-07-31:** The direct ADB writes below are obsolete on
+> Android 16 and remain as historical evidence only. Current supported import paths
+> are the in-app SAF import for `SkirmishScripts.scb` and the in-app Mods picker SAF
+> folder import. Core retail `.big` archive import is not yet supported in-app. The
+> `adb shell am start` command below remains valid for intent launches.
+
 ```bash
 BASE=/sdcard/Android/data/me.generalsx.zh/files/GameData
 adb shell mkdir -p $BASE/Mods/Xenoforce
@@ -781,6 +787,14 @@ available, execute each scenario in order and record the actual logcat line in t
 Result column. Any deviation from Expected → treat as a build failure (triage ladder).
 
 **Setup (once):**
+
+> **Android 16 notice, 2026-07-31:** The direct ADB writes below are obsolete on
+> Android 16 and remain as historical evidence only. Current supported import paths
+> are the in-app SAF import for `SkirmishScripts.scb` and the in-app Mods picker SAF
+> folder import. Core retail `.big` archive import is not yet supported in-app. The
+> `adb install`, `adb logcat`, and `adb shell am start` commands remain valid for
+> installation, log capture, and intent launches.
+
 ```bash
 BASE=/sdcard/Android/data/me.generalsx.zh/files/GameData
 adb install -r android/app/build/outputs/apk/release/app-release.apk
@@ -907,3 +921,26 @@ Its build orders requested Power Plant at frame 0, Barracks at frame 874, and Wa
 1430. A packaged release APK was smoke-tested to the main menu on the Lenovo TB322FC. The
 exceptional picker path was not runtime-forced. Full Gradle lint remains blocked by existing project
 lint-model and SDL issues, not by this repair. A full win-condition session was not captured.
+
+### 10.12 Loose mod INI fallback restored without filesystem heap corruption (2026-07-31, Lenovo TB322FC / Android 16)
+
+XenoForce runs on PC but its loose `Data/INI/Locomotor.ini` was ignored on Android.
+`loadMods()` correctly registers the selected mod root as a LocalFileSystem fallback, but
+the Android early return in `fixFilenameFromWindowsPath()` skipped all fallback probing.
+Retail `INIZH.big` therefore supplied `Locomotor.ini`; mod Object INIs from the mod BIG
+loaded, then failed to resolve `SDF-1Locomotor`.
+
+The initial repair reused `std::filesystem::path::operator/` and `exists()` before that
+early return. On device this reintroduced the known Scudo heap corruption in
+`basic_string::append` during `GameLODManager::init`. The final Android-only repair uses
+fixed-buffer `snprintf` plus POSIX `stat()` to probe the primary asset root and selected
+mod roots, preserving the order GameData loose files → selected mod loose files → mod
+and retail archives. It never calls `std::filesystem::operator/` or
+`directory_iterator` in the Android fallback path.
+
+The device release APK completed engine initialization, entered `execute()`, and remained
+focused in `GameActivity` with `Mods/XenoForce` selected. The log contained no Scudo,
+fatal-signal, or INI-field failure. `android_fallback_test` covers fallback discovery and
+the public LocalFileSystem-over-ArchiveFileSystem precedence contract.
+
+The green Mods button and mod content were not physically inspected, see the [Android loose-mod fallback handoff](docs/WORKDIR/support/ANDROID_LOOSE_MOD_FALLBACK.md) for the source-backed contract and safe retest steps.

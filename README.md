@@ -22,8 +22,9 @@ This is the **first-ever DXVK build for Android**.
 | Touch input (tap, drag, pinch) | ✅ |
 | On-device stability (no crash) | ✅ stable past 170s (3 boot crashes fixed) |
 | Mod loading (`mod.txt` / Intent extra) | ✅ verified on-device |
+| Android loose-file override | ✅ engine-level device verified, visual check pending. See [`android.md` §10.12](android.md#1012-loose-mod-ini-fallback-restored-without-filesystem-heap-corruption) and the [developer handoff](docs/WORKDIR/support/ANDROID_LOOSE_MOD_FALLBACK.md). |
 | Audio playback | ⚠️ Backend fixed (opensl); decoder blocked (FFmpeg can't build for arm64 — upstream vcpkg#33963) |
-| Full gameplay session (skirmish) | ✅ (OnePlus Pad 2) |
+| Full gameplay session (skirmish) | ⚠️ Boots & playable, but enemy AI spawns as **neutral** (no AI controller, no victory condition, capturable). Root cause found, fix in progress — see [Skirmish Bug Investigation](#skirmish-bug-investigation-2026-07-11--chain-of-thought) below |
 
 **Tested on:**
 - OnePlus Pad 2 (Snapdragon 8 Gen 3, Adreno 830, 3392×2400)
@@ -74,6 +75,56 @@ Full details: [`android.md` §10.10](android.md) (findings 1-6, all root causes 
 
 ---
 
+## Skirmish Bug Investigation (2026-07-11) — Chain of Thought
+
+After confirming skirmish boots and is playable, a test play revealed the enemy AI is
+broken: the enemy team spawns as a **neutral faction** (no AI controller, no victory
+condition for defeating them, structures capturable, units won't auto-attack). The chain
+of thought:
+
+1. **Symptom → root cause.** The player picked red for the enemy, but the enemy
+   structures came out un-colored + neutral/capturable. Player color is applied during
+   the slot→Player conversion (`GameLogic.cpp:1502`), so "no red" means the **AI Player
+   object was never created from its GameInfo slot**. With no AI Player, the map's
+   player-2 start objects fall back to neutral ownership — explaining every symptom: no
+   AI (no controller), no victory (victory scripts load only when `numTeams > 1`), and
+   neutral/capturable (`Player::getRelationship()` defaults to NEUTRAL).
+
+2. **Code path verified correct by inspection.** The entire skirmish-start path
+   (`reallyDoStart` → `startGame`/`closeOpenSlots` → `MSG_NEW_GAME(GAME_SKIRMISH)` →
+   `startNewGame` → slot loop → `PlayerList::newGame` → `setPlayerRelationship`) is
+   correct on paper. So the defect is in **runtime data** (the AI slot's state at
+   game-start), not logic.
+
+3. **Instrumentation built.** Added 16 `[SKIRMISH]` `__android_log_print` probes across
+   `GameLogic.cpp` (startNewGame slot table + loop), `PlayerList.cpp` (newGame sides +
+   players + relationships), and `Player.cpp` (initFromDict skirmish-side match). The
+   key line is `slot[N]: state=? isOccupied=? isAI=? color=?` — it reveals whether the
+   AI slot is occupied at game-start. (Engine `DEBUG_LOG` is compiled out in
+   `RelWithDebInfo`, and `fprintf(stderr)` doesn't reach logcat on Android, so direct
+   `__android_log_print` probes are required — see `android.md` §6.)
+
+4. **Blocker: boot crash in some build environments.** Rebuilding the instrumented
+   engine hit a SIGSEGV (fault `0x98`) inside `vkCreateAndroidSurfaceKHR` during
+   `D3D8::CreateDevice` — *before* the menu. Exhaustively ruled out (9+ attempts + Oracle
+   consult): device state, memory pressure, instrumentation, stale objects, DXVK `.so`
+   (byte-identical rebuild), SDL3 source, DMA, ANativeWindow-readiness (verified valid),
+   `deferSurfaceCreation`, and `VK_EXT_swapchain_maintenance1`. It's an **Adreno driver
+   defect** (the driver reports `swapchain_maintenance1` support but rejects its own
+   features struct, then null-derefs in surface creation) that only manifests in some
+   build environments — a known-working build boots fine.
+
+5. **Path forward.** A build from a working environment boots, so the fix path is:
+   rebuild the instrumented engine where it boots → start a skirmish → capture
+   `adb logcat -d -s GeneralsX:V` → analyze the `[SKIRMISH]` lines with the pre-built
+   decision tree (most likely: the AI slot's state didn't persist from the GUI, or a
+   map skirmish-side mismatch) → ship the targeted fix → remove the probes.
+
+**Capture runbook:** [`docs/WORKDIR/support/SKIRMISH_LOG_CAPTURE.md`](docs/WORKDIR/support/SKIRMISH_LOG_CAPTURE.md)
+**Full technical detail:** [`android.md`](android.md) §10.10 + persistent memory (skirmish diagnosis + boot-crash findings).
+
+---
+
 ## How to Play
 
 ### What you need
@@ -105,19 +156,11 @@ adb install GeneralsZH-full.apk
 
 ### Step 3: Copy your game data
 
-The game needs its `.big` archive files on your tablet's filesystem:
+The game needs its `.big` archive files on your tablet's filesystem. Android 16
+blocks direct ADB writes into the app-owned `Android/data` directory, and the app
+does not yet provide an in-app SAF importer for core retail `.big` archives.
 
-```bash
-# Create the game data directory on the tablet
-adb shell mkdir -p /sdcard/Android/data/me.generalsx.zh/files/GameData/Data
-
-# Copy ALL .big files from your PC install to the tablet
-# (from your Generals install directory, typically):
-#   C:\Program Files (x86)\Steam\steamapps\common\Generals\
-adb push "*.big" /sdcard/Android/data/me.generalsx.zh/files/GameData/Data/
-
-# The fonts are bundled in the APK and extract automatically on first launch.
-```
+The fonts are bundled in the APK and extract automatically on first launch.
 
 **Required .big files** (copy all of these from your install's `Data/` folder):
 
@@ -199,9 +242,10 @@ of every bug found and fixed during the port.
 The engine supports mods via the `-mod <path>` command-line argument. On Android,
 this is wired through two mechanisms (see `android.md` §10 for full details):
 
-1. **`mod.txt`** (persistent default): write a mod's directory path to
-   `GameData/mod.txt` on the device. The engine reads it on launch and injects
-   `-mod <path>` automatically.
+1. **Mods picker** (persistent default): use the in-app **Mods** picker →
+   **Activate** after selecting an imported mod. This writes `mod.txt` and the
+   engine injects `-mod <path>` automatically. Use the in-app **Mods** picker →
+   **SAF folder import** to import a mod folder.
 
 2. **Intent extra** (per-launch override): `adb shell am start -n me.generalsx.zh/.GameActivity --es "mod" "/sdcard/Android/data/me.generalsx.zh/files/GameData/Mods/YourMod"`
 
@@ -209,11 +253,11 @@ The Intent extra takes precedence over `mod.txt`. If neither is present, the gam
 launches vanilla. Mod `.big` archives are loaded by the engine's existing
 `loadMods()` — no recompile needed to switch mods.
 
-**Loose files:** overrides under `$BASE/Mods/YourMod/` (e.g. `Art/`, `Data/`) resolve
-automatically via `setAssetFallbackPaths`, which `loadMods()` wires when the mod dir
-is loaded. They override `.big` archive contents but not loose files already in the
-GameData root. Alternatively, merge loose files directly into the GameData tree (always
-active while present, but not switchable via `mod.txt`).
+**Loose files:** use the in-app **Mods** picker → **SAF folder import** to import a mod
+folder containing overrides such as `Art/` or `Data/`. Overrides under
+`$BASE/Mods/YourMod/` resolve automatically via `setAssetFallbackPaths`, which
+`loadMods()` wires when the mod dir is loaded. They override `.big` archive contents but
+not loose files already in the GameData root.
 
 ---
 
