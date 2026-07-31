@@ -63,7 +63,7 @@ public:
 	void         reset() override {}
 	void         update() override {}
 	void         closeAllFiles() override {}
-	Bool         loadBigFilesFromDirectory(AsciiString, AsciiString, Bool) override { return FALSE; }
+	Bool         loadBigFilesFromDirectory(AsciiString, AsciiString, Bool, Bool) override { return FALSE; }
 	// loadIntoDirectoryTree is protected in the base; expose it for the test.
 	void         loadIntoDirectoryTreePublic(ArchiveFile *af, Bool ow) { loadIntoDirectoryTree(af, ow); }
 };

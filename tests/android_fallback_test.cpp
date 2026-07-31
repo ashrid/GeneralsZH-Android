@@ -217,7 +217,7 @@ public:
 	void         reset() override {}
 	void         update() override {}
 	void         closeAllFiles() override {}
-	Bool         loadBigFilesFromDirectory(AsciiString, AsciiString, Bool) override { return FALSE; }
+	Bool         loadBigFilesFromDirectory(AsciiString, AsciiString, Bool, Bool) override { return FALSE; }
 	void         loadIntoDirectoryTreePublic(ArchiveFile *af, Bool ow) { loadIntoDirectoryTree(af, ow); }
 };
 
