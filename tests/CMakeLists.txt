@@ -54,3 +54,166 @@ target_compile_definitions(archive_override_test PRIVATE
     CURL_STATICLIB NDEBUG
 )
 add_test(NAME archive_override_test COMMAND archive_override_test)
+
+# GeneralsX @feature Claude 31/07/2026 RED phase: session-based Mods status predicate tests
+# (mod_session_test.cpp). Four-case truth table for GeneralsX_SessionModLoadedFrom(modDir, modBIG):
+# the predicate is declared in the test but defined later in MainMenu.cpp (GREEN phase). Until
+# then this target intentionally fails to link with an undefined reference to that symbol —
+# proof the test exists and guards the contract before any implementation. Same engine
+# link/include setup as archive_override_test.
+add_executable(mod_session_test mod_session_test.cpp)
+target_include_directories(mod_session_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/GameEngine/Include/Precompiled
+    ${CMAKE_SOURCE_DIR}/Generals/Code/GameEngine/Include/Precompiled
+    ${CMAKE_SOURCE_DIR}/Core/GameEngine/Include
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Include
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/Compression
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WW3D2
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWAudio
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWDebug
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWLib
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWMath
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWSaveLoad
+    ${CMAKE_SOURCE_DIR}/Dependencies/Utility
+    ${CMAKE_SOURCE_DIR}/Generals/Code/CompatLib/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/CompatLib/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/GameEngine/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/Libraries/Source/WWVegas
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/Libraries/Source/WWVegas/WW3D2
+    ${CMAKE_SOURCE_DIR}/resources/gitinfo
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/include/dxvk
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/usr/include
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/usr/include/dxvk
+    ${CMAKE_BINARY_DIR}/_deps/gamespy-src/include
+    ${CMAKE_BINARY_DIR}/_deps/gamespy-src/include/gamespy
+    ${CMAKE_BINARY_DIR}/_deps/lzhl-src/CompLibHeader
+    ${CMAKE_BINARY_DIR}/_deps/sdl3-build/include-revision
+    ${CMAKE_BINARY_DIR}/_deps/sdl3-src/include
+)
+target_link_libraries(mod_session_test PRIVATE doctest::doctest z_gameengine z_gameenginedevice zi_always core_profile_legacy d3dx8 corei_gameengine_public)
+target_compile_features(mod_session_test PRIVATE cxx_std_20)
+target_compile_definitions(mod_session_test PRIVATE
+    RTS_ZEROHOUR RTS_RELEASE _UNIX
+    SAGE_USE_SDL SAGE_USE_OPENAL SAGE_USE_GLM SAGE_UPDATE_CHECK
+    IG_DEBUG_STACKTRACE
+    DISABLE_MEMORYPOOL_CHECKPOINTING DISABLE_MEMORYPOOL_STACKTRACE
+    HAVE_STRLCAT HAVE_STRLCPY HAVE_WCSLCAT HAVE_WCSLCPY
+    CURL_STATICLIB NDEBUG
+)
+add_test(NAME mod_session_test COMMAND mod_session_test)
+
+# GeneralsX @feature Claude 31/07/2026 RED phase: Android persisted relative mod-path
+# normalization tests (mod_path_test.cpp). Four-case contract for
+# GeneralsX_NormalizeModPath(rawPath, gameDataPath): the function is declared in the test
+# but defined later in the engine (GREEN phase). Until then this target intentionally
+# fails to link with an undefined reference to that symbol — proof the test exists and
+# guards the contract before any implementation. Same engine link/include setup as
+# mod_session_test / archive_override_test.
+add_executable(mod_path_test mod_path_test.cpp)
+target_include_directories(mod_path_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/GameEngine/Include/Precompiled
+    ${CMAKE_SOURCE_DIR}/Generals/Code/GameEngine/Include/Precompiled
+    ${CMAKE_SOURCE_DIR}/Core/GameEngine/Include
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Include
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/Compression
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WW3D2
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWAudio
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWDebug
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWLib
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWMath
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWSaveLoad
+    ${CMAKE_SOURCE_DIR}/Dependencies/Utility
+    ${CMAKE_SOURCE_DIR}/Generals/Code/CompatLib/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/CompatLib/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/GameEngine/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/Libraries/Source/WWVegas
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/Libraries/Source/WWVegas/WW3D2
+    ${CMAKE_SOURCE_DIR}/resources/gitinfo
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/include/dxvk
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/usr/include
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/usr/include/dxvk
+    ${CMAKE_BINARY_DIR}/_deps/gamespy-src/include
+    ${CMAKE_BINARY_DIR}/_deps/gamespy-src/include/gamespy
+    ${CMAKE_BINARY_DIR}/_deps/lzhl-src/CompLibHeader
+    ${CMAKE_BINARY_DIR}/_deps/sdl3-build/include-revision
+    ${CMAKE_BINARY_DIR}/_deps/sdl3-src/include
+)
+target_link_libraries(mod_path_test PRIVATE doctest::doctest z_gameengine z_gameenginedevice zi_always core_profile_legacy d3dx8 corei_gameengine_public)
+target_compile_features(mod_path_test PRIVATE cxx_std_20)
+target_compile_definitions(mod_path_test PRIVATE
+    RTS_ZEROHOUR RTS_RELEASE _UNIX
+    SAGE_USE_SDL SAGE_USE_OPENAL SAGE_USE_GLM SAGE_UPDATE_CHECK
+    IG_DEBUG_STACKTRACE
+    DISABLE_MEMORYPOOL_CHECKPOINTING DISABLE_MEMORYPOOL_STACKTRACE
+    HAVE_STRLCAT HAVE_STRLCPY HAVE_WCSLCAT HAVE_WCSLCPY
+    CURL_STATICLIB NDEBUG
+)
+add_test(NAME mod_path_test COMMAND mod_path_test)
+
+# GeneralsX @feature Claude 31/07/2026 RED phase: Android loose-mod fallback discovery test
+# (android_fallback_test.cpp). Guards the Android-only bug where fixFilenameFromWindowsPath
+# returns under #if defined(__ANDROID__) before consulting s_assetFallbackPath /
+# s_assetFallbackPaths, so loadMods()-registered loose mod files (Data/INI/Locomotor.ini)
+# cannot override retail archive entries on device.
+#
+# To exercise the real __ANDROID__ code path on the Linux host build, the target ALSO compiles
+# the genuine Core/GameEngineDevice/Source/StdDevice/Common/StdLocalFileSystem.cpp as a source,
+# with -D__ANDROID__ (and the CppMacros.h force-include the unit normally gets via the
+# z_gameenginedevice PCH) applied to THAT translation unit only via set_source_files_properties.
+# The android object supplies every StdLocalFileSystem::* symbol ahead of the z_gameenginedevice
+# STATIC archive, so the archive's own (Linux) StdLocalFileSystem.o is never pulled in — no
+# duplicate symbols, and doesFileExist/openFile run the genuine Android path. No
+# directory_iterator is ever invoked (the Android early-exit from the case-insensitive
+# traversal is preserved).
+add_executable(android_fallback_test
+    android_fallback_test.cpp
+    ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/StdDevice/Common/StdLocalFileSystem.cpp
+)
+# Per-TU: force the __ANDROID__ code path + the CppMacros.h first-include the unit relies on.
+set_source_files_properties(
+    ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/StdDevice/Common/StdLocalFileSystem.cpp
+    PROPERTIES COMPILE_OPTIONS "-include;Utility/CppMacros.h;-D__ANDROID__"
+)
+target_include_directories(android_fallback_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/GameEngine/Include/Precompiled
+    ${CMAKE_SOURCE_DIR}/Generals/Code/GameEngine/Include/Precompiled
+    ${CMAKE_SOURCE_DIR}/Core/GameEngine/Include
+    ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Include
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Include
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/Compression
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WW3D2
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWAudio
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWDebug
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWLib
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWMath
+    ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WWSaveLoad
+    ${CMAKE_SOURCE_DIR}/Dependencies/Utility
+    ${CMAKE_SOURCE_DIR}/Generals/Code/CompatLib/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/CompatLib/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/GameEngine/Include
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/Libraries/Source/WWVegas
+    ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/Libraries/Source/WWVegas/WW3D2
+    ${CMAKE_SOURCE_DIR}/resources/gitinfo
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/include/dxvk
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/usr/include
+    ${CMAKE_BINARY_DIR}/_deps/dxvk-src/usr/include/dxvk
+    ${CMAKE_BINARY_DIR}/_deps/gamespy-src/include
+    ${CMAKE_BINARY_DIR}/_deps/gamespy-src/include/gamespy
+    ${CMAKE_BINARY_DIR}/_deps/lzhl-src/CompLibHeader
+    ${CMAKE_BINARY_DIR}/_deps/sdl3-build/include-revision
+    ${CMAKE_BINARY_DIR}/_deps/sdl3-src/include
+)
+target_link_libraries(android_fallback_test PRIVATE doctest::doctest z_gameengine z_gameenginedevice zi_always core_profile_legacy d3dx8 corei_gameengine_public)
+target_compile_features(android_fallback_test PRIVATE cxx_std_20)
+target_compile_definitions(android_fallback_test PRIVATE
+    RTS_ZEROHOUR RTS_RELEASE _UNIX
+    SAGE_USE_SDL SAGE_USE_OPENAL SAGE_USE_GLM SAGE_UPDATE_CHECK
+    IG_DEBUG_STACKTRACE
+    DISABLE_MEMORYPOOL_CHECKPOINTING DISABLE_MEMORYPOOL_STACKTRACE
+    HAVE_STRLCAT HAVE_STRLCPY HAVE_WCSLCAT HAVE_WCSLCPY
+    CURL_STATICLIB NDEBUG
+)
+add_test(NAME android_fallback_test COMMAND android_fallback_test)

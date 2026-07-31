@@ -74,6 +74,7 @@
 #include "Common/GlobalData.h"
 #include "Common/GameEngine.h"
 #include "Common/GameMemory.h"
+#include "Common/ModPath.h"
 #include "Common/Debug.h"
 #include "Common/version.h"  // GeneralsX @bugfix BenderAI 14/02/2026 Version class + TheVersion extern
 #include "SDL3GameEngine.h"
@@ -449,6 +450,83 @@ int main(int argc, char* argv[])
 			}
 		}
 
+		// GeneralsX @bugfix android-port 30/07/2026 Extract the fixed ModPickerMenu.wnd from
+		// APK assets over the app-owned GameData copy on every launch. Retail/older installs
+		// ship a malformed copy whose "STARTALLCHILDREN" token the WND parser does not
+		// recognize, so tapping Mods SIGSEGVs in WindowLayout::addWindow during Shell::doPush.
+		// Android 16 blocks direct ADB writes into the app-private tree, so the corrected file
+		// must be re-staged from the APK each launch (O_TRUNC) rather than only when missing.
+		{
+			char wndBase[1024];
+			const char *wndExtractBase = nullptr;
+			const char *wndExt = SDL_GetAndroidExternalStoragePath();
+			if (wndExt != nullptr) {
+				snprintf(wndBase, sizeof(wndBase), "%s/GameData", wndExt);
+				wndExtractBase = wndBase;
+			}
+			if (wndExtractBase == nullptr) {
+				const char *wndInt = SDL_GetAndroidInternalStoragePath();
+				if (wndInt != nullptr) {
+					snprintf(wndBase, sizeof(wndBase), "%s/GameData", wndInt);
+					wndExtractBase = wndBase;
+				}
+			}
+
+			if (wndExtractBase != nullptr) {
+				char wndDir[1100];
+				snprintf(wndDir, sizeof(wndDir), "%s/Window", wndExtractBase);
+				mkdir(wndDir, 0755);
+				snprintf(wndDir, sizeof(wndDir), "%s/Window/Menus", wndExtractBase);
+				mkdir(wndDir, 0755);
+
+				AAssetManager *wndMgr = nullptr;
+				JNIEnv *wndEnv = (JNIEnv *)SDL_GetAndroidJNIEnv();
+				jobject wndActivity = (jobject)SDL_GetAndroidActivity();
+				if (wndEnv != nullptr && wndActivity != nullptr) {
+					jclass wndCls = wndEnv->GetObjectClass(wndActivity);
+					jmethodID wndMid = wndEnv->GetMethodID(wndCls, "getAssets", "()Landroid/content/res/AssetManager;");
+					if (wndMid != nullptr) {
+						jobject wndJavaAssetMgr = wndEnv->CallObjectMethod(wndActivity, wndMid);
+						if (wndJavaAssetMgr != nullptr) {
+							wndMgr = AAssetManager_fromJava(wndEnv, wndJavaAssetMgr);
+							wndEnv->DeleteLocalRef(wndJavaAssetMgr);
+						}
+					}
+					wndEnv->DeleteLocalRef(wndCls);
+				}
+
+				if (wndMgr != nullptr) {
+					static const char * const wndAssetPath = "Window/Menus/ModPickerMenu.wnd";
+					AAsset *wndAsset = AAssetManager_open(wndMgr, wndAssetPath, AASSET_MODE_STREAMING);
+					if (wndAsset == nullptr) {
+						__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
+							"wnd: asset '%s' not found in APK", wndAssetPath);
+					} else {
+						char wndOutPath[1100];
+						snprintf(wndOutPath, sizeof(wndOutPath), "%s/Window/Menus/ModPickerMenu.wnd", wndExtractBase);
+						int wndFd = open(wndOutPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+						if (wndFd < 0) {
+							__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
+								"wnd: cannot open output '%s'", wndOutPath);
+						} else {
+							char wndBuf[8192];
+							int wndBytes;
+							while ((wndBytes = AAsset_read(wndAsset, wndBuf, sizeof(wndBuf))) > 0) {
+								write(wndFd, wndBuf, wndBytes);
+							}
+							close(wndFd);
+							__android_log_print(ANDROID_LOG_INFO, "GeneralsX",
+								"wnd: extracted ModPickerMenu.wnd -> %s", wndOutPath);
+						}
+						AAsset_close(wndAsset);
+					}
+				} else {
+					__android_log_print(ANDROID_LOG_WARN, "GeneralsX",
+						"wnd: cannot get AAssetManager via JNI");
+				}
+			}
+		}
+
 			if (files != nullptr) {
 			// DXVK shader cache in the app cache dir (purgeable under storage pressure).
 			const char *cache = SDL_GetAndroidCachePath();
@@ -816,6 +894,23 @@ int main(int argc, char* argv[])
 						}
 					}
 					fclose(modFile);
+				}
+			}
+
+			// GeneralsX @bugfix Claude 31/07/2026 Resolve a relative mod path against CWD
+			// (already chdir'ed to GameData above) before -mod injection. Device probe proved
+			// Mods/<name> from mod.txt passed access() here but parseMod left m_modDir empty:
+			// parseMod resolves relative -mod paths against the sandboxed config storage, not
+			// CWD/GameData. Making the path absolute here lets parseMod find it. Absolute Intent
+			// paths pass through GeneralsX_NormalizeModPath unchanged.
+			if (modPathBuf[0] != '\0')
+			{
+				char cwdBuf[512];
+				if (getcwd(cwdBuf, sizeof(cwdBuf)) != nullptr)
+				{
+					AsciiString normalized = GeneralsX_NormalizeModPath(
+						AsciiString(modPathBuf), AsciiString(cwdBuf));
+					snprintf(modPathBuf, sizeof(modPathBuf), "%s", normalized.str());
 				}
 			}
 

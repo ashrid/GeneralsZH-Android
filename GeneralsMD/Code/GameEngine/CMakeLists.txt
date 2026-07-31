@@ -600,6 +600,7 @@ set(GAMEENGINE_SRC
     Source/Common/Language.cpp
     Source/Common/MessageStream.cpp
     Source/Common/MiniLog.cpp
+    Source/Common/ModPath.cpp
     Source/Common/MultiplayerSettings.cpp
     Source/Common/NameKeyGenerator.cpp
     Source/Common/PartitionSolver.cpp

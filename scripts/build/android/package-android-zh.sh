@@ -154,6 +154,12 @@ cp -f "${ANDROID_DIR}/config/dxvk.conf" "${ASSETS}/dxvk.conf"
 mkdir -p "${ASSETS}/fonts"
 cp -f "${HOME}/GeneralsX/android-staging/fonts/"*.ttf "${ASSETS}/fonts/"
 
+# GeneralsX @bugfix android-port 30/07/2026 Bundle the fixed ModPickerMenu.wnd as an APK
+# asset. SDL3Main.cpp extracts it over the app-owned GameData copy on every launch to
+# repair installs whose malformed "STARTALLCHILDREN" token SIGSEGVs the Mods picker.
+mkdir -p "${ASSETS}/Window/Menus"
+cp -f "${REPO_ROOT}/GeneralsZH/Data/Window/Menus/ModPickerMenu.wnd" "${ASSETS}/Window/Menus/ModPickerMenu.wnd"
+
 # ---- 5. Gradle assembleRelease ------------------------------------------------
 echo "==> Building APK (./gradlew assembleRelease)"
 cd "${ANDROID_DIR}"

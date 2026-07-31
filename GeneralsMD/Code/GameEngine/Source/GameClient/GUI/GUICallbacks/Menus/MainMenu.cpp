@@ -83,6 +83,12 @@
 #include <SDL3/SDL.h>
 #endif
 
+// GeneralsX @feature Claude 31/07/2026 Session Mods predicate: TRUE iff this launch has a parsed -mod dir or -modBIG archive.
+Bool GeneralsX_SessionModLoadedFrom(const AsciiString &modDir, const AsciiString &modBIG)
+{
+	return !modDir.isEmpty() || !modBIG.isEmpty();
+}
+
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
 
@@ -189,6 +195,11 @@ static GameWindow *dropDownWindows[DROPDOWN_COUNT];
 
 static Bool buttonPushed = FALSE;
 static Bool isShuttingDown = FALSE;
+// GeneralsX @bugfix Claude 31/07/2026 Explicit MainMenu lifecycle gate. layout->isHidden()
+// stays false after MainMenuShutdown while stacked updates keep running, so it cannot gate
+// Mods-button (re)creation. mainMenuActive is TRUE only between a completed MainMenuInit
+// and the next MainMenuShutdown, which is the actual boundary the dynamic button needs.
+static Bool mainMenuActive = FALSE;
 static Bool startGame = FALSE;
 static Int	initialGadgetDelay = 210;
 // GeneralsX @bugfix BenderAI 31/03/2026 Keep fallback credit label tied to main menu lifecycle so it does not leak into gameplay.
@@ -694,7 +705,9 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 	layout->bringForward();
 	// set keyboard focus to main parent
 	TheWindowManager->winSetFocus( parentMainMenu );
-
+	// GeneralsX @bugfix Claude 31/07/2026 Lifecycle gate comes up only after init is fully
+	// done, so the next update is the first one allowed to create the Mods button.
+	mainMenuActive = TRUE;
 
 }
 
@@ -703,6 +716,10 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 //-------------------------------------------------------------------------------------------------
 void MainMenuShutdown( WindowLayout *layout, void *userData )
 {
+	// GeneralsX @bugfix Claude 31/07/2026 Drop the lifecycle gate first, before any stacked
+	// update can run, so MainMenuUpdate cannot recreate the Mods child while ModPickerMenu
+	// is still above this hidden MainMenu. Must precede diagnostics and destruction.
+	mainMenuActive = FALSE;
 	if (!startGame)
 		isShuttingDown = TRUE;
 	if (fallbackCreditLabel)
@@ -919,7 +936,14 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 #endif
 
 	// GeneralsX @feature Claude 10/07/2026 Task 12 (D7): create Mods button on main menu.
-	if (modsButton == nullptr && TheDisplay && parentMainMenu)
+	// GeneralsX @bugfix Claude 31/07/2026 Shell::update() keeps updating stacked layouts
+	// even after MainMenuShutdown, and layout->isHidden() stays false while ModPickerMenu is
+	// pushed above this MainMenu, so isHidden() cannot gate Mods-button (re)creation. The
+	// explicit mainMenuActive gate (set at the end of MainMenuInit, cleared as the first
+	// statement of MainMenuShutdown) is the true boundary: no recreation is possible between
+	// MainMenuShutdown and the next fully completed MainMenuInit, and after MainMenuInit the
+	// next update creates a fresh button. Initial launch behavior is unchanged.
+	if (mainMenuActive && modsButton == nullptr && TheDisplay && parentMainMenu)
 	{
 		const Int btnW = 120;
 		const Int btnH = 26;
@@ -948,6 +972,20 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 
 			buttonModsID = TheNameKeyGenerator->nameToKey("GeneralsXModsButton");
 			GadgetButtonSetText(modsButton, UnicodeString(L"Mods"));
+			// GeneralsX @bugfix Claude 31/07/2026 Button stayed red with an active mod: W3DGadgetPushButtonDraw fills from gadget draw colors, not winSetEnabledTextColors (label only). Resting red/green from the predicate; hilite/hilite-selected blue.
+			const Bool modSessionActive = GeneralsX_SessionModLoadedFrom(TheGlobalData->m_modDir, TheGlobalData->m_modBIG);
+			const Color modRestingColor = modSessionActive
+				? GameMakeColor(46, 180, 70, 255)
+				: GameMakeColor(200, 48, 43, 255);
+			const Color modRestingBorder = modSessionActive
+				? GameMakeColor(20, 90, 35, 255)
+				: GameMakeColor(100, 24, 22, 255);
+			GadgetButtonSetEnabledColor(modsButton, modRestingColor);
+			GadgetButtonSetEnabledBorderColor(modsButton, modRestingBorder);
+			GadgetButtonSetHiliteColor(modsButton, GameMakeColor(128, 128, 255, 255));
+			GadgetButtonSetHiliteBorderColor(modsButton, GameMakeColor(0, 0, 128, 255));
+			GadgetButtonSetHiliteSelectedColor(modsButton, GameMakeColor(128, 128, 255, 255));
+			GadgetButtonSetHiliteSelectedBorderColor(modsButton, GameMakeColor(0, 0, 128, 255));
 		}
 	}
 
@@ -979,7 +1017,9 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 	}
 
 	if(dontAllowTransitions && TheTransitionHandler->isFinished())
+	{
 		dontAllowTransitions = FALSE;
+	}
 
 	if(showLogo && dontAllowTransitions == FALSE)
 	{

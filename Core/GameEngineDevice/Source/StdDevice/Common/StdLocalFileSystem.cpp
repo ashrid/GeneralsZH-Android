@@ -35,6 +35,19 @@
 #include <algorithm>
 #include <filesystem>
 
+#if defined(__ANDROID__)
+// GeneralsX @bugfix Claude 31/07/2026 Android loose-file fallback uses POSIX fixed-buffer APIs
+// only (snprintf/stat) — std::filesystem::path::operator/ and parent_path() allocate
+// (basic_string::append) and corrupt the Scudo heap on device.
+#include <cstdio>
+#include <cstring>
+#include <limits.h>
+#include <sys/stat.h>
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+#endif
+
 #ifndef _WIN32
 // GeneralsX @bugfix felipebraz 23/03/2026 Asset root fallback path for loose file lookups.
 // On Linux/macOS the game binary's cwd and the data directory (asset root, CNC_GENERALS_ZH_PATH) are separate.
@@ -44,6 +57,49 @@ static std::filesystem::path s_assetFallbackPath;
 // GeneralsX @feature Claude 10/07/2026 Task 13 (D8a): additional fallback paths for mod
 // loose files. Checked after s_assetFallbackPath (primary asset root) and before archives.
 static std::vector<std::filesystem::path> s_assetFallbackPaths;
+#endif
+
+#if defined(__ANDROID__)
+// GeneralsX @bugfix Claude 31/07/2026 Allocation-free loose-file fallback probe. std::filesystem
+// path joins/exists allocate (basic_string::append) and corrupt the Scudo heap on device, so
+// probe with snprintf + POSIX stat() and copy the match into outBuf — the caller then constructs
+// exactly one std::filesystem::path (pre-fix allocation profile). File::WRITE passes when the
+// parent directory exists.
+static bool androidLooseFileHit(const char *root, const char *rel, Int access,
+								char *outBuf, size_t outSize)
+{
+	if (root == nullptr || root[0] == '\0' || rel == nullptr || rel[0] == '\0')
+		return false;
+
+	const size_t rootLen = std::strlen(root);
+	const char *sep = (root[rootLen - 1] == '/') ? "" : "/";
+	char probe[PATH_MAX];
+	const int len = std::snprintf(probe, sizeof(probe), "%s%s%s", root, sep, rel);
+	if (len < 0 || static_cast<size_t>(len) >= sizeof(probe))
+		return false;
+
+	struct stat st;
+	if (::stat(probe, &st) == 0) {
+		std::strncpy(outBuf, probe, outSize - 1);
+		outBuf[outSize - 1] = '\0';
+		return true;
+	}
+
+	if (access & File::WRITE) {
+		char *slash = std::strrchr(probe, '/');
+		if (slash != nullptr && slash != probe) {
+			*slash = '\0';
+			const bool parentExists = (::stat(probe, &st) == 0);
+			*slash = '/';
+			if (parentExists) {
+				std::strncpy(outBuf, probe, outSize - 1);
+				outBuf[outSize - 1] = '\0';
+				return true;
+			}
+		}
+	}
+	return false;
+}
 #endif
 
 StdLocalFileSystem::StdLocalFileSystem() : LocalFileSystem()
@@ -74,6 +130,30 @@ static std::filesystem::path fixFilenameFromWindowsPath(const Char *filename, In
 	// added (engine then completes full init + creates D3D device + enters execute()). Android is
 	// case-sensitive, and .big archive lookups go through ArchiveFileSystem (which has its own
 	// case handling), so the loose-file case-insensitive traversal is not needed here.
+	// GeneralsX @bugfix Claude 31/07/2026 The early-return also skipped the fallback roots, so
+	// loadMods()-registered loose mod files could not override retail archives on device. Probe
+	// s_assetFallbackPath (primary) then s_assetFallbackPaths (mod roots) via androidLooseFileHit
+	// — fixed buffers + stat(), no std::filesystem joins/exists (heap corruptor). Precedence is
+	// preserved; a hit yields exactly one std::filesystem::path, otherwise the original path is
+	// returned as before.
+	char relBuf[PATH_MAX];
+	size_t ri = 0;
+	for (; filename[ri] != '\0' && ri < sizeof(relBuf) - 1; ++ri)
+		relBuf[ri] = (filename[ri] == '\\') ? '/' : filename[ri];
+	relBuf[ri] = '\0';
+
+	if (relBuf[0] != '\0' && relBuf[0] != '/') {
+		char match[PATH_MAX];
+		bool hit = androidLooseFileHit(s_assetFallbackPath.c_str(), relBuf, access,
+									   match, sizeof(match));
+		for (const auto &fb : s_assetFallbackPaths) {
+			if (hit) break;
+			hit = androidLooseFileHit(fb.c_str(), relBuf, access, match, sizeof(match));
+		}
+		if (hit) {
+			return std::filesystem::path(match);
+		}
+	}
 	return path;
 #endif
 
