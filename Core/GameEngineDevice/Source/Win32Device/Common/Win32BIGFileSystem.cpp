@@ -641,7 +641,11 @@ void Win32BIGFileSystem::closeAllArchiveFiles() {
 void Win32BIGFileSystem::closeAllFiles() {
 }
 
-Bool Win32BIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fileMask, Bool overwrite) {
+Bool Win32BIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fileMask, Bool overwrite, Bool retailScan) {
+	// GeneralsX @feature Claude 31/07/2026 retailScan is consumed only by the Android (Std)
+	// build; the Win32 path keeps its existing INIZH.big handling regardless, so it is ignored
+	// here to leave desktop byte-identical.
+	(void)retailScan;
 
 	FilenameList filenameList;
 	TheLocalFileSystem->getFileListInDirectory(dir, "", fileMask, filenameList, TRUE);
