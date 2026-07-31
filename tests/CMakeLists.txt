@@ -217,3 +217,15 @@ target_compile_definitions(android_fallback_test PRIVATE
     CURL_STATICLIB NDEBUG
 )
 add_test(NAME android_fallback_test COMMAND android_fallback_test)
+
+# GeneralsX @feature Claude 31/07/2026 Truth table for the Android archive skip predicate
+# (GeneralsXArchiveFilter.h). The inline helper is pure + dependency-free, so this target only
+# needs doctest + the engine Common include path. The TU is compiled -D__ANDROID__ so the
+# helper's Android branch is live (off-Android it is a no-op, which would make every assertion
+# pass for the wrong reason). See archive_filter_test.cpp for the locked hierarchy contract.
+add_executable(archive_filter_test archive_filter_test.cpp)
+target_include_directories(archive_filter_test PRIVATE ${CMAKE_SOURCE_DIR}/Core/GameEngine/Include)
+target_link_libraries(archive_filter_test PRIVATE doctest::doctest)
+target_compile_features(archive_filter_test PRIVATE cxx_std_20)
+target_compile_definitions(archive_filter_test PRIVATE __ANDROID__)
+add_test(NAME archive_filter_test COMMAND archive_filter_test)
