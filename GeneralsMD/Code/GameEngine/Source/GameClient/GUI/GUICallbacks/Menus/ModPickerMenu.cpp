@@ -10,6 +10,7 @@
 #ifndef _WIN32
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>  // unlink, rmdir (POSIX recursive delete — no std::filesystem, Scudo hazard)
 #endif
 
 // GeneralsX @feature Claude 30/07/2026 Android Mods picker: bridge the dynamic
@@ -35,6 +36,7 @@ void *SDL_GetAndroidActivity(void);
 #include "GameClient/GadgetListBox.h"
 #include "GameClient/GadgetPushButton.h"
 #include "GameClient/KeyDefs.h"
+#include "GameClient/MessageBox.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Display.h"  // GeneralsX @bugfix: scale picker font to TheDisplay->getWidth()
 #include "Common/UnicodeString.h"
@@ -50,13 +52,78 @@ static NameKeyType listBoxModsID = NAMEKEY_INVALID;
 static NameKeyType buttonImportID = NAMEKEY_INVALID;
 static GameWindow *importButton = nullptr;
 
+// GeneralsX @feature Claude 31/07/2026 Delete button (uniform row alongside Import/Activate/Cancel).
+static NameKeyType buttonDeleteID = NAMEKEY_INVALID;
+static GameWindow *deleteButton = nullptr;
+
 static GameWindow *modPickerListBox = nullptr;
 
-static std::vector<AsciiString> s_modPaths;
+// GeneralsX @feature Claude 31/07/2026 Per-mod metadata for the picker list: recursive folder
+// size (POSIX, not std::filesystem — Scudo heap-corruption hazard) and active-mod flag.
+struct ModEntry
+{
+	AsciiString path;   // "Mods/<name>" (relative)
+	AsciiString name;
+	long long   sizeBytes;
+	Bool        isActive;
+};
+static std::vector<ModEntry> s_mods;
+static int s_pendingDeleteIdx = -1;
+
+static long long computeDirSizeRecursive(const char *path)
+{
+	long long total = 0;
+	DIR *dir = opendir(path);
+	if (!dir)
+		return 0;
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != nullptr)
+	{
+		if (entry->d_name[0] == '.' &&
+			(entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0')))
+			continue;  // skip "." and ".."
+		char child[1024];
+		snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+		struct stat st;
+		if (stat(child, &st) != 0)
+			continue;
+		if (S_ISDIR(st.st_mode))
+			total += computeDirSizeRecursive(child);
+		else
+			total += (long long)st.st_size;
+	}
+	closedir(dir);
+	return total;
+}
+
+static Bool deleteDirRecursive(const char *path)
+{
+	DIR *dir = opendir(path);
+	if (!dir)
+		return FALSE;
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != nullptr)
+	{
+		if (entry->d_name[0] == '.' &&
+			(entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0')))
+			continue;
+		char child[1024];
+		snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+		struct stat st;
+		if (stat(child, &st) != 0)
+			continue;
+		if (S_ISDIR(st.st_mode))
+			deleteDirRecursive(child);
+		else
+			unlink(child);
+	}
+	closedir(dir);
+	return rmdir(path) == 0;
+}
 
 static void scanModDirectories()
 {
-	s_modPaths.clear();
+	s_mods.clear();
 
 #ifndef _WIN32
 	DIR *dir = opendir("Mods");
@@ -69,15 +136,24 @@ static void scanModDirectories()
 		if (entry->d_name[0] == '.')
 			continue;
 
-		AsciiString fullpath = AsciiString("Mods/");
-		fullpath.concat(entry->d_name);
+		char fullpath[1024];
+		snprintf(fullpath, sizeof(fullpath), "Mods/%s", entry->d_name);
 		struct stat st;
-		if (stat(fullpath.str(), &st) != 0)
+		if (stat(fullpath, &st) != 0)
 			continue;
 		if (!S_ISDIR(st.st_mode))
 			continue;
 
-		s_modPaths.push_back(fullpath);
+		ModEntry m;
+		m.path = fullpath;
+		m.name = entry->d_name;
+		m.sizeBytes = computeDirSizeRecursive(fullpath);
+		// parseMod stores m_modDir with a trailing separator for dir mods, so match both forms.
+		AsciiString pathWithSlash = m.path;
+		pathWithSlash.concat('/');
+		m.isActive = TheGlobalData->m_modDir.endsWithNoCase(m.path) ||
+		             TheGlobalData->m_modDir.endsWithNoCase(pathWithSlash);
+		s_mods.push_back(m);
 	}
 	closedir(dir);
 #endif
@@ -99,12 +175,37 @@ static void populateModListBox()
 		return;
 
 	GadgetListBoxReset(modPickerListBox);
-	for (const auto &modPath : s_modPaths)
+	for (const auto &m : s_mods)
 	{
+		char line[512];
+		const char *activeTag = m.isActive ? "  [ACTIVE]" : "";
+		if (m.sizeBytes >= 1048576LL)
+			snprintf(line, sizeof(line), "%s  (%.1f MB)%s", m.name.str(), (double)m.sizeBytes / 1048576.0, activeTag);
+		else if (m.sizeBytes >= 1024LL)
+			snprintf(line, sizeof(line), "%s  (%.1f KB)%s", m.name.str(), (double)m.sizeBytes / 1024.0, activeTag);
+		else
+			snprintf(line, sizeof(line), "%s  (%lld B)%s", m.name.str(), (long long)m.sizeBytes, activeTag);
+
 		UnicodeString displayText;
-		displayText.translate(modPath.str());
+		displayText.translate(line);
 		GadgetListBoxAddEntryText(modPickerListBox, displayText, 0xFFFFFFFF, -1);
 	}
+}
+
+// GeneralsX @feature Claude 31/07/2026 MessageBoxYesNo callbacks take no args, so the pending
+// delete index is stashed in s_pendingDeleteIdx by the Delete handler and consumed here.
+static void confirmDeleteModYes()
+{
+	if (s_pendingDeleteIdx >= 0 && s_pendingDeleteIdx < (int)s_mods.size())
+		deleteDirRecursive(s_mods[s_pendingDeleteIdx].path.str());
+	s_pendingDeleteIdx = -1;
+	scanModDirectories();
+	populateModListBox();
+}
+
+static void confirmDeleteModNo()
+{
+	s_pendingDeleteIdx = -1;
 }
 
 #if defined(__ANDROID__)
@@ -196,7 +297,10 @@ void ModPickerMenuInit(WindowLayout *layout, void *userData)
 	if (cancelButton)
 		GadgetButtonSetText(cancelButton, UnicodeString(L"Cancel"));
 	if (modPickerListBox)
-		modPickerListBox->winSetText(UnicodeString(L"Mods"));
+		// GeneralsX @tweak Claude 31/07/2026 Clear listbox text: a non-empty label makes
+		// GadgetListBoxInput's GWM_LEFT_UP add a fontHeight offset to the row hit-test, so taps
+		// landed below the entries. The "MODS" title is now the LabelTitle STATICTEXT instead.
+		modPickerListBox->winSetText(UnicodeString(L""));
 
 	// GeneralsX @bugfix Claude 30/07/2026 Scale the picker font to display width.
 	// ModPickerMenu.wnd rectangles are authored in an 800px design coordinate
@@ -231,39 +335,30 @@ void ModPickerMenuInit(WindowLayout *layout, void *userData)
 	scanModDirectories();
 	populateModListBox();
 
-#if defined(__ANDROID__)
-	// GeneralsX @feature Claude 30/07/2026 Add "Import Folder" alongside
-	// Activate/Cancel. Same row/height as the WND buttons (y450, h30), placed
-	// left of Activate. WIN_STATUS_ENABLED without IMAGE selects the color-draw
-	// path used by the repaired Activate/Cancel controls.
-	if (importButton == nullptr)
+	// GeneralsX @feature Claude 31/07/2026 Import + Delete buttons live in the WND (design-
+	// scaled like Activate/Cancel) so the row renders uniformly. Retrieve by ID, apply the
+	// scaled font + caption. Import only functions on Android (SAF) — hide it elsewhere.
+	buttonImportID = TheNameKeyGenerator->nameToKey("ModPickerMenu.wnd:ButtonImport");
+	buttonDeleteID = TheNameKeyGenerator->nameToKey("ModPickerMenu.wnd:ButtonDelete");
+	importButton = TheWindowManager->winGetWindowFromId(nullptr, buttonImportID);
+	deleteButton = TheWindowManager->winGetWindowFromId(nullptr, buttonDeleteID);
+
+	GameFont *rowFont = TheWindowManager->winFindFont("Arial", pickerPointSize, FALSE);
+	if (importButton)
 	{
-		GameWindow *parent = activateButton ? activateButton->winGetParent() : nullptr;
-		if (parent)
-		{
-			buttonImportID = TheNameKeyGenerator->nameToKey("ModPickerMenu.wnd:ButtonImport");
-
-			WinInstanceData instData;
-			instData.init();
-			BitSet(instData.m_style, GWS_PUSH_BUTTON | GWS_MOUSE_TRACK);
-			instData.m_textLabelString = "ModPickerMenu.wnd:ButtonImport";
-
-			importButton = TheWindowManager->gogoGadgetPushButton(
-				parent,
-				WIN_STATUS_ENABLED,
-				140, 450, 120, 30,
-				&instData, nullptr, TRUE);
-
-			if (importButton)
-			{
-				GameFont *font = TheWindowManager->winFindFont("Arial", pickerPointSize, FALSE);
-				if (font)
-					importButton->winSetFont(font);
-				GadgetButtonSetText(importButton, UnicodeString(L"Import Folder"));
-			}
-		}
-	}
+		if (rowFont)
+			importButton->winSetFont(rowFont);
+		GadgetButtonSetText(importButton, UnicodeString(L"Import"));
+#if !defined(__ANDROID__)
+		importButton->winHide(TRUE);
 #endif
+	}
+	if (deleteButton)
+	{
+		if (rowFont)
+			deleteButton->winSetFont(rowFont);
+		GadgetButtonSetText(deleteButton, UnicodeString(L"Delete"));
+	}
 }
 
 void ModPickerMenuUpdate(WindowLayout *layout, void *userData)
@@ -283,20 +378,15 @@ void ModPickerMenuUpdate(WindowLayout *layout, void *userData)
 
 void ModPickerMenuShutdown(WindowLayout *layout, void *userData)
 {
-#if defined(__ANDROID__)
-	// GeneralsX @bugfix Claude 30/07/2026 Destroy the dynamic import button on
-	// shutdown so the pointer cannot dangle if the menu is reopened (same fix
-	// applied to the Mods button on MainMenu).
-	if (importButton)
-	{
-		TheWindowManager->winDestroy(importButton);
-		importButton = nullptr;
-	}
+	// Import/Delete are WND-defined (layout-owned) — cleared here, freed by the layout teardown.
+	importButton = nullptr;
+	deleteButton = nullptr;
 	buttonImportID = NAMEKEY_INVALID;
-#endif
+	buttonDeleteID = NAMEKEY_INVALID;
+	s_pendingDeleteIdx = -1;
 
 	modPickerListBox = nullptr;
-	s_modPaths.clear();
+	s_mods.clear();
 	layout->hide(TRUE);
 	TheShell->shutdownComplete(layout);
 }
@@ -326,13 +416,13 @@ WindowMsgHandledType ModPickerMenuSystem(GameWindow *window, UnsignedInt msg,
 
 			if (controlID == buttonActivateID)
 			{
-				if (modPickerListBox && !s_modPaths.empty())
+				if (modPickerListBox && !s_mods.empty())
 				{
 					Int selected = -1;
 					GadgetListBoxGetSelected(modPickerListBox, &selected);
-					if (selected >= 0 && selected < (Int)s_modPaths.size())
+					if (selected >= 0 && selected < (Int)s_mods.size())
 					{
-						writeModTxt(s_modPaths[selected]);
+						writeModTxt(s_mods[selected].path);
 					}
 				}
 				TheShell->pop();
@@ -342,14 +432,41 @@ WindowMsgHandledType ModPickerMenuSystem(GameWindow *window, UnsignedInt msg,
 				TheShell->pop();
 			}
 #if defined(__ANDROID__)
-			// GeneralsX @feature Claude 30/07/2026 Import button is matched by
-			// pointer (like the Mods button on MainMenu); routing it only fires
-			// the SAF request and leaves Activate/Cancel exactly as before.
+		// GeneralsX @feature Claude 30/07/2026 Import button is matched by
+		// pointer (like the Mods button on MainMenu); routing it only fires
+		// the SAF request and leaves Activate/Cancel exactly as before.
 			else if (control == importButton)
 			{
 				requestModFolderImportJni();
 			}
 #endif
+			// GeneralsX @feature Claude 31/07/2026 Delete: match by pointer. Block the active
+			// mod (informative Ok box); otherwise stash the selection and confirm via Yes/No.
+			else if (control == deleteButton)
+			{
+				Int selected = -1;
+				if (modPickerListBox)
+					GadgetListBoxGetSelected(modPickerListBox, &selected);
+				if (selected >= 0 && selected < (Int)s_mods.size())
+				{
+					const ModEntry &m = s_mods[selected];
+					if (m.isActive)
+					{
+						MessageBoxOk(UnicodeString(L"Cannot Delete"),
+							UnicodeString(L"Cannot delete the active mod. Deactivate it first."), nullptr);
+					}
+					else
+					{
+						s_pendingDeleteIdx = selected;
+						char body[512];
+						snprintf(body, sizeof(body), "Permanently delete \"%s\"?", m.name.str());
+						UnicodeString bodyText;
+						bodyText.translate(body);
+						MessageBoxYesNo(UnicodeString(L"Delete Mod"), bodyText,
+							confirmDeleteModYes, confirmDeleteModNo);
+					}
+				}
+			}
 			break;
 		}
 

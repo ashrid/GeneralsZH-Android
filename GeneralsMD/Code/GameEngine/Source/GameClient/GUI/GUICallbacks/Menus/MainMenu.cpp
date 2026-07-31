@@ -945,9 +945,14 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 	// next update creates a fresh button. Initial launch behavior is unchanged.
 	if (mainMenuActive && modsButton == nullptr && TheDisplay && parentMainMenu)
 	{
-		const Int btnW = 120;
-		const Int btnH = 26;
-		const Int margin = 8;
+		// GeneralsX @tweak Claude 31/07/2026 Scale the Mods button from the 800px design base
+		// (same approach as ModPickerMenu's font scaling). The raw 120x26 px was unreadable on
+		// high-DPI Android tablets; scaling keeps it proportional to the display.
+		const UnsignedInt modsDesignWidth = 800;
+		const double modsScale = (double)TheDisplay->getWidth() / (double)modsDesignWidth;
+		const Int btnW = (Int)(120.0 * modsScale);
+		const Int btnH = (Int)(26.0 * modsScale);
+		const Int margin = (Int)(8.0 * modsScale);
 		const Int x = margin;
 		const Int y = TheDisplay->getHeight() - btnH - margin;
 
@@ -966,7 +971,8 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 
 		if (modsButton)
 		{
-			GameFont* font = TheWindowManager->winFindFont("Arial", 12, FALSE);
+			const int modsFontPt = (int)(12.0 * modsScale + 0.5);
+			GameFont* font = TheWindowManager->winFindFont("Arial", modsFontPt, FALSE);
 			if (font)
 				modsButton->winSetFont(font);
 
