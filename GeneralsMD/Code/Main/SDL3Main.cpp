@@ -997,14 +997,11 @@ int main(int argc, char* argv[])
 
 		// Create SDL3 window with Vulkan support
 		fprintf(stderr, "INFO: Creating SDL3 Vulkan window...\n");
-		// GeneralsX @bugfix android-port 08/07/2026 On Android, the window MUST
-		// NOT start hidden. A hidden SDL window has no ANativeWindow attached
-		// (Android only creates the Surface for visible windows), which causes
-		// CreateAndroidSurfaceKHR to dereference null (fault addr 0x98) when
-		// DXVK tries to create the Vulkan swapchain surface. On desktop the
-		// hidden flag avoids a flash before D3D init; on mobile it's fatal.
+		// GeneralsX @bugfix Claude 31/07/2026 Restore SDL_WINDOW_HIDDEN on Android:
+		// its removal correlates with the deterministic CreateDevice crash (fault 0x98
+		// in CreateAndroidSurfaceKHR) despite ANativeWindow being valid.
 #if defined(__ANDROID__)
-		Uint32 windowFlags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
+		Uint32 windowFlags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN;
 #else
 		Uint32 windowFlags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN;  // Start hidden, show after D3D init
 #endif
