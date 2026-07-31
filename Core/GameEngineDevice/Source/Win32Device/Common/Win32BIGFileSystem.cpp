@@ -642,9 +642,10 @@ void Win32BIGFileSystem::closeAllFiles() {
 }
 
 Bool Win32BIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fileMask, Bool overwrite, Bool retailScan) {
-	// GeneralsX @feature Claude 31/07/2026 retailScan is consumed only by the Android (Std)
-	// build; the Win32 path keeps its existing INIZH.big handling regardless, so it is ignored
-	// here to leave desktop byte-identical.
+	// GeneralsX @feature Claude 31/07/2026 retailScan is consumed by the Std build (Android via
+	// GeneralsXArchiveFilter, Linux/macOS via the gated RTS_ZEROHOUR INIZH skip). The Win32 path
+	// keeps its legacy unconditional INIZH.big handling (behavior-identical to upstream), so
+	// retailScan is ignored here.
 	(void)retailScan;
 
 	FilenameList filenameList;

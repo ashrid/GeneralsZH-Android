@@ -661,8 +661,8 @@ void StdBIGFileSystem::closeAllFiles() {
 }
 
 Bool StdBIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fileMask, Bool overwrite, Bool retailScan) {
-#ifndef __ANDROID__
-	(void)retailScan; // consumed only by the Android branch below
+#if !defined(__ANDROID__) && !RTS_ZEROHOUR
+	(void)retailScan; // consumed only by the __ANDROID__ and RTS_ZEROHOUR branches below
 #endif
 
 	FilenameList filenameList;
@@ -682,15 +682,18 @@ Bool StdBIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fi
 			it++;
 			continue;
 		}
-#elif RTS_ZEROHOUR
+	#elif RTS_ZEROHOUR
 		// TheSuperHackers @bugfix bobtista 18/11/2025 Skip duplicate INIZH.big in Data\INI to prevent CRC mismatches.
 		// English, Chinese, and Korean SKUs shipped with two INIZH.big files (one in Run directory, one in Run\Data\INI).
 		// The DeleteFile cleanup doesn't work on EA App/Origin installs because the folder is not writable, so we skip loading it instead.
-		if (it->endsWithNoCase("Data\\INI\\INIZH.big") || it->endsWithNoCase("Data/INI/INIZH.big")) {
+		// GeneralsX @feature Claude 31/07/2026 Gate on retailScan: the duplicate-CRC skip applies to retail
+		// discovery only. A selected mod's own INIZH.big must still load during the mod sweep
+		// (retailScan=FALSE), matching the Android filter's contract (generals-mods.md "INIZH.big Rule").
+		if (retailScan && (it->endsWithNoCase("Data\\INI\\INIZH.big") || it->endsWithNoCase("Data/INI/INIZH.big"))) {
 			it++;
 			continue;
 		}
-#endif
+	#endif
 
 		ArchiveFile *archiveFile = openArchiveFile((*it).str());
 

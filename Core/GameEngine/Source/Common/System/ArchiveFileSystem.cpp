@@ -340,7 +340,9 @@ void ArchiveFileSystem::loadMods()
 
 	if (TheGlobalData->m_modDir.isNotEmpty())
 	{
-		MAYBE_UNUSED Bool ret = loadBigFilesFromDirectory(TheGlobalData->m_modDir, "*.big", TRUE);
+		// GeneralsX @feature Claude 31/07/2026 retailScan=FALSE: selected-mod sweep loads the
+		// mod's archives in full (including a mod-provided INIZH.big), skipping nothing.
+		MAYBE_UNUSED Bool ret = loadBigFilesFromDirectory(TheGlobalData->m_modDir, "*.big", TRUE, /*retailScan=*/FALSE);
 		(void)ret;
 		DEBUG_ASSERTLOG(ret, ("loadBigFilesFromDirectory(%s) returned FALSE!", TheGlobalData->m_modDir.str()));
 

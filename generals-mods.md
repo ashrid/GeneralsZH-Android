@@ -33,8 +33,11 @@ the primary scan and is always active. Put switchable mod archives under
 ## INIZH.big Rule
 
 Retail installs can contain a duplicate `Data/INI/INIZH.big`, which is skipped
-during primary discovery to avoid CRC mismatches. That skip does not apply to a
-selected mod, so a mod-provided `Data/INI/INIZH.big` can override retail data.
+during primary discovery to avoid CRC mismatches. On the Std device path
+(Android, Linux, macOS) that skip is scoped to retail discovery via `retailScan`,
+so a selected mod's own `Data/INI/INIZH.big` loads and can override retail data.
+The Win32 device path retains the legacy unconditional skip (behavior-identical to
+upstream), so a mod-provided INIZH.big does not override there.
 
 ## Retail Versus This Fork
 

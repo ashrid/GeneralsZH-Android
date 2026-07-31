@@ -35,6 +35,11 @@
 // hazard androidLooseFileHit avoids with fixed buffers + POSIX stat(). This helper follows
 // that precedent: fixed char[CAP] buffers + strncmp/strcmp only.
 //
+// Input assumption: archivePath and scanRoot are canonical paths from the directory scanner
+// (StdLocalFileSystem via std::filesystem::directory_iterator), which never emits "." or ".."
+// components. The normalizer collapses repeat/leading slashes and single "." segments but
+// does NOT resolve ".." (parent-dir) — callers must pass scanner output, not arbitrary strings.
+//
 // The implementation is `inline` so it can live in a header consumed by both the production
 // StdBIGFileSystem TU (Android build, -D__ANDROID__) and the test TU
 // (tests/archive_filter_test.cpp, compiled -D__ANDROID__) without a multiple-definition link
