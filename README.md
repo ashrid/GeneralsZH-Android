@@ -259,6 +259,42 @@ folder containing overrides such as `Art/` or `Data/`. Overrides under
 `loadMods()` wires when the mod dir is loaded. They override `.big` archive contents but
 not loose files already in the GameData root.
 
+### Mods picker GUI
+
+The main-menu **Mods** button opens an in-game mod manager rendered natively by the
+engine (not a system dialog). It scales with the display, shows each mod's folder size
+and active state, and lets you import, activate, and delete mods.
+
+<p align="center">
+  <img src="assets/mod-menu-button.png" alt="Main menu with the Mods button (green = a mod is active)" width="560">
+</p>
+
+The **Mods button** (bottom-left) is **green** when a mod is active for the session and
+**red** when running vanilla. It scales with the display so it stays readable and
+tappable on high-DPI tablets.
+
+<p align="center">
+  <img src="assets/mod-picker.png" alt="Mods picker: title, mod list with sizes and [ACTIVE], and the Import/Activate/Delete/Cancel row" width="560">
+</p>
+
+The picker lists every mod under `GameData/Mods/`, each with its on-disk size and an
+`[ACTIVE]` tag for the currently-selected mod. The uniform button row:
+
+| Button | Action |
+|---|---|
+| **Import** | Open the Android SAF folder picker to import a new mod folder into `GameData/Mods/`. |
+| **Activate** | Write the selected mod to `mod.txt` (applied on next launch). |
+| **Delete** | Permanently remove the selected mod folder. The active mod is protected — you get a "Cannot delete the active mod" prompt, then a Yes/No confirm; the list refreshes in place after deletion. |
+| **Cancel** | Close the picker without changes. |
+
+<p align="center">
+  <img src="assets/mod-delete.png" alt="Delete protection: the active mod cannot be deleted" width="560">
+</p>
+
+Only one mod can be active at a time. Imported mods are isolated from primary archive
+discovery — inactive `GameData/Mods/*` archives are never auto-mounted, so installing a
+mod does not affect the base game until you Activate it.
+
 ---
 
 ## What This Port Involved
