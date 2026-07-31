@@ -6,6 +6,22 @@ if(RTS_BUILD_OPTION_ASAN)
     set(RTS_GAMEMEMORY_ENABLE OFF)
 endif()
 
+# GeneralsX @bugfix android-port 14/07/2026 Disable memory pool debug features
+# on Android. When MEMORYPOOL_DEBUG is ON, every freed block is filled with
+# GARBAGE_FILL_VALUE (0xDEADBEEF) by debugMarkBlockAsFree(). On Android, DXVK's
+# internal C++ objects share the same operator new/delete (flat ELF namespace).
+# When DXVK recycles an object via operator delete, the pool garbage-fills the
+# block, destroying DXVK's DxvkResourceAllocationPool free-list pointers. The
+# next allocation reads the garbage pointer (0x2000000001) and crashes.
+# Disabling debug features prevents the garbage-fill, letting DXVK's recycled
+# objects survive intact.
+if(ANDROID)
+    set(RTS_MEMORYPOOL_DEBUG OFF)
+    set(RTS_MEMORYPOOL_DEBUG_BOUNDINGWALL OFF)
+    set(RTS_MEMORYPOOL_DEBUG_CUSTOM_NEW OFF)
+    message(STATUS "Android: Memory pool debug disabled (DXVK compatibility)")
+endif()
+
 # Memory pool features
 option(RTS_MEMORYPOOL_OVERRIDE_MALLOC "Enables the Dynamic Memory Allocator for malloc calls." OFF)
 option(RTS_MEMORYPOOL_MPSB_DLINK "Adds a backlink to MemoryPoolSingleBlock. Makes it faster to free raw DMA blocks, but increases memory consumption." ON)

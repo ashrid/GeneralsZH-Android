@@ -117,3 +117,30 @@ endif()
 if(MINGW AND COMMAND add_debug_strip_target)
     add_debug_strip_target(z_generals)
 endif()
+
+# GeneralsX @bugfix android-port 14/07/2026 On Android, use a version script to
+# remove operator new/delete from libmain.so's dynamic symbol table. This forces
+# DXVK, SDL3, OpenAL and other loaded .so libraries to use libc++'s default
+# operator new (plain malloc) instead of the engine's TheDynamicMemoryAllocator
+# pool, which zeroes every allocation and garbage-fills on free — both of which
+# corrupt DXVK's internal free-lists and cause the
+# DxvkResourceAllocationPool::alloc() crash (fault addr 0x2000000001).
+# The engine code still uses its own pool internally (static linking resolves
+# the operators locally); only external .so libraries are affected.
+if(ANDROID)
+    set(_gx_alloc_map "${CMAKE_CURRENT_BINARY_DIR}/gx_hide_alloc.map")
+    file(WRITE "${_gx_alloc_map}" [=[
+{
+  global:
+    *;
+  local:
+    _Znw*;
+    _Zna*;
+    _Zdl*;
+    _Zda*;
+};
+]=])
+    target_link_options(z_generals PRIVATE
+        "-Wl,--version-script,${_gx_alloc_map}"
+    )
+endif()

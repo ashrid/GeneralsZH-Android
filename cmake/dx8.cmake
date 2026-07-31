@@ -63,10 +63,15 @@ elseif(ANDROID)
   # GeneralsX @bugfix Claude 10/07/2026 var must be named ANDROID_API to match the
   # @ANDROID_API@ placeholder in meson-android-aarch64-cross.ini.in — a mismatch left it
   # empty and produced aarch64-linux-android-clang (no API level), which NDK r27 doesn't ship.
-  string(REGEX REPLACE "^android-" "" ANDROID_API "${ANDROID_PLATFORM}")
+  # GeneralsX @build android-port 14/07/2026 Map to the template variable name.
+  string(REGEX REPLACE "^android-" "" DXVK_ANDROID_API "${ANDROID_PLATFORM}")
+  set(ANDROID_API "${DXVK_ANDROID_API}")
 
   # The NDK prebuilt host-tag (darwin-x86_64 on macOS, linux-x86_64 on Linux).
-  if(APPLE)
+  # GeneralsX @build android-port 14/07/2026 Use CMAKE_HOST_SYSTEM_NAME instead
+  # of APPLE — during Android cross-compilation, CMAKE_SYSTEM_NAME is "Android"
+  # so APPLE is false even when building on macOS.
+  if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     set(NDK_HOST_TAG "darwin-x86_64")
   else()
     set(NDK_HOST_TAG "linux-x86_64")
