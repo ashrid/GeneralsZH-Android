@@ -195,15 +195,15 @@ void sendSyntheticMouse(SDL3Mouse *mouse, SDL_Window *window, Uint32 type,
 			ev.motion.x = x;
 			ev.motion.y = y;
 			break;
-		case SDL_EVENT_MOUSE_BUTTON_DOWN:
-		case SDL_EVENT_MOUSE_BUTTON_UP:
-			ev.button.windowID = windowID;
-			ev.button.button = button;
+	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+	case SDL_EVENT_MOUSE_BUTTON_UP:
+		ev.button.windowID = windowID;
+		ev.button.button = button;
 			ev.button.down = (type == SDL_EVENT_MOUSE_BUTTON_DOWN);
-			ev.button.clicks = 1;
-			ev.button.x = x;
-			ev.button.y = y;
-			break;
+		ev.button.clicks = 1;
+		ev.button.x = x;
+		ev.button.y = y;
+		break;
 		case SDL_EVENT_MOUSE_WHEEL:
 			ev.wheel.windowID = windowID;
 			ev.wheel.x = 0.0f;
@@ -980,4 +980,3 @@ AudioManager *SDL3GameEngine::createAudioManager(Bool dummy)
 }
 
 #endif // !_WIN32
-
