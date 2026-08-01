@@ -306,6 +306,7 @@
                 "SAGE_UPDATE_CHECK": "OFF",
                 "RTS_CRASHDUMP_ENABLE": "OFF",
                 "RTS_BUILD_OPTION_FFMPEG": "OFF",
+                "SAGE_ANDROID_FFMPEG_DIR": "${sourceDir}/build/ffmpeg-android",
                 "RTS_BUILD_OPTION_SAGE_PATCH": "OFF",
                 "RTS_BUILD_GENERALS": "OFF",
                 "RTS_BUILD_CORE_TOOLS": "OFF",

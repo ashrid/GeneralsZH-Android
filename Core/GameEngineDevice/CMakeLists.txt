@@ -274,26 +274,40 @@ if(SAGE_USE_OPENAL)
     # FFmpeg (scripts/build/android/build-ffmpeg-android.sh). When found at
     # SAGE_ANDROID_FFMPEG_DIR, use the real FFmpegFile.cpp instead of the stub.
     if(NOT RTS_BUILD_OPTION_FFMPEG)
-        if(ANDROID AND DEFINED SAGE_ANDROID_FFMPEG_DIR AND EXISTS "${SAGE_ANDROID_FFMPEG_DIR}/include/libavcodec/avcodec.h")
-            # Real FFmpeg built for Android arm64 — use the real decoder
-            message(STATUS "Android FFmpeg found at ${SAGE_ANDROID_FFMPEG_DIR} — audio decoding enabled")
+        # GeneralsX @refactor Claude 01/08/2026 The Android tier is audio-only and statically
+        # linked. Require every archive we link plus the headers, so a partial prefix falls back
+        # to the stub instead of failing at link time.
+        set(_sage_android_ffmpeg_ok FALSE)
+        if(ANDROID AND DEFINED SAGE_ANDROID_FFMPEG_DIR
+           AND EXISTS "${SAGE_ANDROID_FFMPEG_DIR}/include/libavcodec/avcodec.h"
+           AND EXISTS "${SAGE_ANDROID_FFMPEG_DIR}/include/libavformat/avformat.h"
+           AND EXISTS "${SAGE_ANDROID_FFMPEG_DIR}/lib/libavformat.a"
+           AND EXISTS "${SAGE_ANDROID_FFMPEG_DIR}/lib/libavcodec.a"
+           AND EXISTS "${SAGE_ANDROID_FFMPEG_DIR}/lib/libavutil.a")
+            set(_sage_android_ffmpeg_ok TRUE)
+        endif()
+
+        if(_sage_android_ffmpeg_ok)
+            message(STATUS "Android FFmpeg (audio-only, static) found at ${SAGE_ANDROID_FFMPEG_DIR} — audio decoding enabled")
             target_sources(corei_gameenginedevice_private INTERFACE
                 Include/VideoDevice/FFmpeg/FFmpegFile.h
-                Include/VideoDevice/FFmpeg/FFmpegVideoPlayer.h
                 Source/VideoDevice/FFmpeg/FFmpegFile.cpp
-                Source/VideoDevice/FFmpeg/FFmpegVideoPlayer.cpp
             )
             target_include_directories(corei_gameenginedevice_private INTERFACE
                 ${SAGE_ANDROID_FFMPEG_DIR}/include
             )
+            # Static archives, dependency order avformat -> avcodec -> avutil. swresample and
+            # swscale are deliberately absent: nothing in the engine calls swr_*, and video
+            # stays on BinkVideoPlayer.
             target_link_libraries(corei_gameenginedevice_private INTERFACE
-                ${SAGE_ANDROID_FFMPEG_DIR}/lib/libavcodec.so
-                ${SAGE_ANDROID_FFMPEG_DIR}/lib/libavformat.so
-                ${SAGE_ANDROID_FFMPEG_DIR}/lib/libavutil.so
-                ${SAGE_ANDROID_FFMPEG_DIR}/lib/libswresample.so
-                ${SAGE_ANDROID_FFMPEG_DIR}/lib/libswscale.so
+                ${SAGE_ANDROID_FFMPEG_DIR}/lib/libavformat.a
+                ${SAGE_ANDROID_FFMPEG_DIR}/lib/libavcodec.a
+                ${SAGE_ANDROID_FFMPEG_DIR}/lib/libavutil.a
             )
-            target_compile_definitions(corei_gameenginedevice_public INTERFACE RTS_HAS_FFMPEG)
+            # GeneralsX @refactor Claude 01/08/2026 Audio-only define. RTS_HAS_FFMPEG must NOT be
+            # set here - it also switches W3DGameClient::createVideoPlayer() to FFmpegVideoPlayer,
+            # which this tier deliberately does not compile (that was an unresolved-symbol break).
+            target_compile_definitions(corei_gameenginedevice_public INTERFACE RTS_HAS_FFMPEG_AUDIO)
         elseif(ANDROID)
             # No FFmpeg — use the stub (audio will be silent)
             target_sources(corei_gameenginedevice_private INTERFACE

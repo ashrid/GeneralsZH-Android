@@ -86,7 +86,10 @@ static const Int DISALLOW_SPEECH_MAX_FRAMES = 30 * 15;
 // Android (vcpkg ffmpeg:arm64-android is broken). Stub the includes so the
 // engine compiles; audio decoding (speech/EVA) is disabled until ffmpeg is
 // hand-built for Android. Visuals + touch work without it.
-#if defined(__ANDROID__)
+// GeneralsX @bugfix Claude 01/08/2026 Was unguarded, so an FFmpeg-enabled Android
+// build still pulled the stub here while OpenALAudioCache.cpp pulled the real
+// headers - two translation units disagreeing on AVFrame's layout.
+#if defined(__ANDROID__) && !defined(RTS_HAS_FFMPEG_AUDIO)
 #include "VideoDevice/FFmpeg/FFmpegAndroidStub.h"
 #else
 extern "C" {
@@ -790,7 +793,11 @@ void OpenALAudioManager::playAudioEvent(AudioEventRTS* event)
 			}
 		}
 
-		File* file = TheFileSystem->openFile(fileToPlay.str());
+		// GeneralsX @bugfix Claude 01/08/2026 Request STREAMING so archive entries resolve to the
+		// lazy StreamingArchiveFile rather than RAMFile, whose openFromArchive eagerly new[]s the
+		// entire file. Music is by far the largest asset (a 4.6MB mp3); the per-frame decode below
+		// was already bounded, but this open was not.
+		File* file = TheFileSystem->openFile(fileToPlay.str(), File::READ | File::STREAMING);
 		if (!file) {
 			DEBUG_LOG(("Failed to open file: %s\n", fileToPlay.str()));
 			releasePlayingAudio(audio);

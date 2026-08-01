@@ -664,6 +664,22 @@ Bool OptionPreferences::getFPSLimitEnabled()
 	return FALSE;
 }
 
+// GeneralsX @feature Claude 31/07/2026 Persisted 60 FPS render mode. Default OFF so retail
+// behavior (30 Hz render + 30 Hz logic) is unchanged until the user opts in from the main menu.
+Bool OptionPreferences::getHighFpsRenderEnabled()
+{
+	OptionPreferences::const_iterator it = find("HighFpsRender");
+	if (it == end())
+	{
+		return FALSE;
+	}
+
+	if (stricmp(it->second.str(), "yes") == 0) {
+		return TRUE;
+	}
+	return FALSE;
+}
+
 Bool OptionPreferences::get3DShadowsEnabled()
 {
 	OptionPreferences::const_iterator it = find("UseShadowVolumes");

@@ -153,6 +153,8 @@ static NameKeyType buttonDiffBackID = NAMEKEY_INVALID;
 // GeneralsX @feature Claude 10/07/2026 Task 12 (D7): dynamic Mods button on main menu.
 static NameKeyType buttonModsID = NAMEKEY_INVALID;
 static GameWindow *modsButton = nullptr;
+// GeneralsX @feature Claude 31/07/2026 Dynamic 60 FPS toggle button on main menu.
+static GameWindow *highFpsButton = nullptr;
 
 
 // window pointers --------------------------------------------------------------------------------
@@ -744,6 +746,12 @@ void MainMenuShutdown( WindowLayout *layout, void *userData )
 		TheWindowManager->winDestroy(modsButton);
 		modsButton = nullptr;
 	}
+	// GeneralsX @feature Claude 31/07/2026 Destroy 60 FPS toggle on shutdown (same lifetime rationale as Mods).
+	if (highFpsButton)
+	{
+		TheWindowManager->winDestroy(highFpsButton);
+		highFpsButton = nullptr;
+	}
 
 	CancelPatchCheckCallback();
 
@@ -992,6 +1000,48 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 			GadgetButtonSetHiliteBorderColor(modsButton, GameMakeColor(0, 0, 128, 255));
 			GadgetButtonSetHiliteSelectedColor(modsButton, GameMakeColor(128, 128, 255, 255));
 			GadgetButtonSetHiliteSelectedBorderColor(modsButton, GameMakeColor(0, 0, 128, 255));
+		}
+	}
+
+	// GeneralsX @feature Claude 31/07/2026 Dynamic 60 FPS toggle, placed to the right of the Mods button.
+	// Label and color reflect the persisted HighFpsRender preference; the click handler flips it.
+	if (mainMenuActive && highFpsButton == nullptr && TheDisplay && parentMainMenu)
+	{
+		const double hfpsScale = (double)TheDisplay->getWidth() / (double)800;
+		const Int modsBtnW = (Int)(120.0 * hfpsScale);
+		const Int gap = (Int)(8.0 * hfpsScale);
+		const Int btnW = (Int)(150.0 * hfpsScale);
+		const Int btnH = (Int)(26.0 * hfpsScale);
+		const Int margin = (Int)(8.0 * hfpsScale);
+		const Int x = margin + modsBtnW + gap;
+		const Int y = TheDisplay->getHeight() - btnH - margin;
+
+		WinInstanceData instData;
+		instData.init();
+		BitSet(instData.m_style, GWS_PUSH_BUTTON | GWS_MOUSE_TRACK);
+		instData.m_textLabelString = "GeneralsXHighFpsButton";
+
+		highFpsButton = TheWindowManager->gogoGadgetPushButton(
+			parentMainMenu,
+			WIN_STATUS_ENABLED,
+			x, y, btnW, btnH,
+			&instData, nullptr, TRUE);
+
+		if (highFpsButton)
+		{
+			GameFont* font = TheWindowManager->winFindFont("Arial", (int)(12.0 * hfpsScale + 0.5), FALSE);
+			if (font)
+				highFpsButton->winSetFont(font);
+
+			OptionPreferences hfpsPref;
+			const Bool hfpsOn = hfpsPref.getHighFpsRenderEnabled();
+			GadgetButtonSetText(highFpsButton, hfpsOn ? UnicodeString(L"60 FPS: ON") : UnicodeString(L"60 FPS: OFF"));
+			GadgetButtonSetEnabledColor(highFpsButton, hfpsOn ? GameMakeColor(46, 180, 70, 255) : GameMakeColor(120, 120, 120, 255));
+			GadgetButtonSetEnabledBorderColor(highFpsButton, hfpsOn ? GameMakeColor(20, 90, 35, 255) : GameMakeColor(60, 60, 60, 255));
+			GadgetButtonSetHiliteColor(highFpsButton, GameMakeColor(128, 128, 255, 255));
+			GadgetButtonSetHiliteBorderColor(highFpsButton, GameMakeColor(0, 0, 128, 255));
+			GadgetButtonSetHiliteSelectedColor(highFpsButton, GameMakeColor(128, 128, 255, 255));
+			GadgetButtonSetHiliteSelectedBorderColor(highFpsButton, GameMakeColor(0, 0, 128, 255));
 		}
 	}
 
@@ -1549,6 +1599,24 @@ WindowMsgHandledType MainMenuSystem( GameWindow *window, UnsignedInt msg,
 					break;
 				buttonPushed = TRUE;
 				TheShell->push("Menus/ModPickerMenu.wnd");
+			}
+			// GeneralsX @feature Claude 31/07/2026 Toggle persisted 60 FPS render mode; the change takes effect on restart.
+			else if( control == highFpsButton )
+			{
+				if(dontAllowTransitions)
+					break;
+				OptionPreferences hfpsPref;
+				const Bool newOn = !hfpsPref.getHighFpsRenderEnabled();
+				hfpsPref["HighFpsRender"] = newOn ? AsciiString("yes") : AsciiString("no");
+				hfpsPref.write();
+				GadgetButtonSetText(highFpsButton, newOn ? UnicodeString(L"60 FPS: ON") : UnicodeString(L"60 FPS: OFF"));
+				GadgetButtonSetEnabledColor(highFpsButton, newOn ? GameMakeColor(46, 180, 70, 255) : GameMakeColor(120, 120, 120, 255));
+				GadgetButtonSetEnabledBorderColor(highFpsButton, newOn ? GameMakeColor(20, 90, 35, 255) : GameMakeColor(60, 60, 60, 255));
+				TheWindowManager->gogoMessageBox(
+					CORNER, CORNER, -1, -1, MSG_BOX_OK,
+					UnicodeString(L"Restart Required"),
+					UnicodeString(L"Please restart the game to apply the 60 FPS setting."),
+					nullptr, nullptr, nullptr, nullptr);
 			}
 			else if( controlID == buttonMultiPlayerID)
 			{

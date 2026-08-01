@@ -113,6 +113,8 @@ public:
 	Bool getUseHeatEffects();
 	Bool getDynamicLODEnabled();
 	Bool getFPSLimitEnabled();
+	// GeneralsX @feature Claude 31/07/2026 Persisted 60 FPS render mode (60 render / 30 logic) toggle.
+	Bool getHighFpsRenderEnabled();
 	Bool getBuildingOcclusionEnabled();
 	Int getParticleCap();
 

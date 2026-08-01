@@ -757,6 +757,24 @@ void GameEngine::init()
 
 		TheFramePacer->setFramesPerSecondLimit(TheGlobalData->m_framesPerSecondLimit);
 
+		// GeneralsX @feature Claude 31/07/2026 Optional 60 FPS render mode (render@60 / logic@30).
+		// Applied once at boot, after LOD init, so the toggle only takes effect on restart (no
+		// mid-session timing mutation). Logic stays at LOGICFRAMES_PER_SECOND (30) via the existing
+		// FramePacer accumulator; only the render cap is raised. Network/replay determinism is
+		// unaffected because getActualLogicTimeScaleFps() yields to TheNetwork->getFrameRate().
+		{
+			OptionPreferences highFpsPref;
+			if (highFpsPref.getHighFpsRenderEnabled())
+			{
+				TheWritableGlobalData->m_framesPerSecondLimit = 60;
+				TheWritableGlobalData->m_useFpsLimit = TRUE;
+				TheFramePacer->setFramesPerSecondLimit(60);
+				TheFramePacer->enableFramesPerSecondLimit(TRUE);
+				TheFramePacer->setLogicTimeScaleFps(LOGICFRAMES_PER_SECOND);
+				TheFramePacer->enableLogicTimeScale(TRUE);
+			}
+		}
+
 		TheAudio->setOn(TheGlobalData->m_audioOn && TheGlobalData->m_musicOn, AudioAffect_Music);
 		TheAudio->setOn(TheGlobalData->m_audioOn && TheGlobalData->m_soundsOn, AudioAffect_Sound);
 		TheAudio->setOn(TheGlobalData->m_audioOn && TheGlobalData->m_sounds3DOn, AudioAffect_Sound3D);

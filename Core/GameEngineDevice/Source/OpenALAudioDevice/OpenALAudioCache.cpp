@@ -1,8 +1,11 @@
 #include "OpenALAudioCache.h"
 
 // GeneralsX @feature android-port 08/07/2026 Use real FFmpeg on Android when
-// available (RTS_HAS_FFMPEG), otherwise fall back to the stub.
-#if defined(__ANDROID__) && !defined(RTS_HAS_FFMPEG)
+// available (RTS_HAS_FFMPEG_AUDIO), otherwise fall back to the stub.
+// GeneralsX @refactor Claude 01/08/2026 Audio now keys on RTS_HAS_FFMPEG_AUDIO, not
+// RTS_HAS_FFMPEG: the latter also switches W3DGameClient::createVideoPlayer() to
+// FFmpegVideoPlayer, which an audio-only build does not compile (unresolved symbol).
+#if defined(__ANDROID__) && !defined(RTS_HAS_FFMPEG_AUDIO)
 #include "VideoDevice/FFmpeg/FFmpegAndroidStub.h"
 #else
 extern "C" {
@@ -91,7 +94,10 @@ OpenALAudioFileCache::~OpenALAudioFileCache()
 //-------------------------------------------------------------------------------------------------
 ALuint OpenALAudioFileCache::getBufferForFile(const OpenFileInfo &fileInfo)
 {
-#if defined(__ANDROID__)
+// GeneralsX @tweak Claude 01/08/2026 Now conditional. A build without FFmpeg keeps this
+// safe early-out unchanged; an FFmpeg-enabled build takes the real path, which no longer
+// allocates the whole file (see the File::STREAMING open below).
+#if defined(__ANDROID__) && !defined(RTS_HAS_FFMPEG_AUDIO)
 	// GeneralsX @bugfix Claude 10/07/2026 Audio playback doesn't work yet (OpenAL inits but no
 	// sound). Loading audio files into RAM via RAMFile triggers OOM (VmSize ~19GB virtual +
 	// the audio new[] mmap fails). Skip file loading — return no buffer. Costs no functionality
@@ -139,7 +145,11 @@ ALuint OpenALAudioFileCache::getBufferForFile(const OpenFileInfo &fileInfo)
 	}
 
 	// Couldn't find the file, so actually open it.
-	File* file = TheFileSystem->openFile(strToFind.str());
+	// GeneralsX @bugfix Claude 01/08/2026 Request STREAMING so archive entries resolve to the
+	// lazy StreamingArchiveFile rather than RAMFile, whose openFromArchive eagerly new[]s the
+	// entire file - the allocation that fails under DXVK's ~17.9GB virtual reservation. The
+	// legacy Miles path (MilesAudioManager.cpp:2934) passed these same flags.
+	File* file = TheFileSystem->openFile(strToFind.str(), File::READ | File::STREAMING);
 	if (!file) {
 		DEBUG_ASSERTLOG(strToFind.isEmpty(), ("Missing Audio File: '%s'\n", strToFind.str()));
 		return 0;
