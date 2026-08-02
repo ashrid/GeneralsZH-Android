@@ -221,6 +221,18 @@ endif()
 
 add_library(z_gameenginedevice STATIC)
 
+# GeneralsX @feature Claude 02/08/2026 App-bundled Mesa Turnip Vulkan driver (Android only).
+# Builds libadrenotools + hook libs + the vkGetInstanceProcAddr bridge .so. The
+# engine's SDL3Main calls adrenotools_open_libvulkan() before Vulkan init and routes
+# SDL3 + DXVK through the bridge so the game uses Turnip instead of the buggy stock
+# Qualcomm HAL (which crashes DXVK under mod load).
+if(ANDROID AND (ANDROID_ABI STREQUAL "arm64-v8a"))
+    add_subdirectory(Source/AdrenoTools)
+    # PUBLIC so the adrenotools_init static archive propagates to the final
+    # z_generals link (SDL3Main.cpp references AdrenoToolsInitVulkanDriver).
+    target_link_libraries(z_gameenginedevice PUBLIC adrenotools_init)
+endif()
+
 target_sources(z_gameenginedevice PRIVATE ${GAMEENGINEDEVICE_SRC})
 
 target_include_directories(z_gameenginedevice PUBLIC

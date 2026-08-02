@@ -11,8 +11,11 @@
     - configChanges: SDL3's SDLActivity handles orientation/keyboard/screen-size
       changes itself; without this Android recreates the Activity on every rotation
       and the Vulkan surface is torn down.
-    - extractNativeLibs="false": keep .so libs page-aligned inside the APK so the
-      loader mmaps them directly (smaller install, faster start).
+    - extractNativeLibs: controlled by android.packaging.jniLibs.useLegacyPackaging in
+      build.gradle (true since 02/08/2026). libadrenotools requires the .so to be
+      extracted to nativeLibraryDir so its Vulkan-driver hooks and the bridge shim are
+      dlopen-able there. Do NOT set android:extractNativeLibs explicitly here — AGP
+      warns that it overrides the Gradle DSL.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -33,7 +36,6 @@
         android:hasCode="true"
         android:largeHeap="true"
         android:supportsRtl="false"
-        android:extractNativeLibs="false"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
         android:icon="@mipmap/ic_launcher">
 

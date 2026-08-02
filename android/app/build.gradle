@@ -106,11 +106,6 @@ android {
     // externalNativeBuild (CMake) ALSO emits those as IMPORTED-target deps into
     // .cxx/intermediates — mergeReleaseNativeLibs then failed with "2 files found
     // with path lib/arm64-v8a/libSDL3.so". pickFirst resolves the (same-build) duplicate.
-    packagingOptions {
-        jniLibs {
-            pickFirst '**/*.so'
-        }
-    }
 
     // SDL3 native libs (libSDL3.so, libSDL3_image.so), DXVK (libdxvk_d3d8.so,
     // libdxvk_d3d9.so), and OpenAL (libopenal.so) are produced by the CMake
@@ -144,16 +139,21 @@ android {
         }
     }
 
-    // Large native lib: do not compress .so in the APK (extractNativeLibs=false
-    // keeps them page-aligned so Android can mmap directly from the APK).
     // GeneralsX @build android-port 07/07/2026 Do NOT strip debug symbols
     // from the release .so libs. DXVK's libdxvk_d3d8/d3d9.so crash when
     // stripped — the symbol table is needed for the Vulkan dispatch tables
     // to resolve correctly. This disables AGP's stripReleaseDebugSymbols task.
-    packagingOptions {
+    //
+    // GeneralsX @feature Claude 02/08/2026 useLegacyPackaging=true (AGP 8 "packaging"
+    // DSL) so native libs are extracted to nativeLibraryDir. REQUIRED by libadrenotools:
+    // its Vulkan-driver hook libraries (libmain_hook.so, libhook_impl.so) and the
+    // libvulkan_bridge.so shim must physically exist in ApplicationInfo.nativeLibraryDir
+    // for the app-bundled Turnip path. Note: `packagingOptions { jniLibs { useLegacyPackaging } }`
+    // is ignored in AGP 8 — only the `packaging` block sets extractNativeLibs.
+    packaging {
         jniLibs {
-            useLegacyPackaging false
-            // Keep DXVK libs intact — stripping them breaks Vulkan dispatch.
+            useLegacyPackaging = true
+            pickFirsts += ['**/*.so']
             keepDebugSymbols += ['**/libdxvk_d3d8.so', '**/libdxvk_d3d9.so', '**/libopenal.so']
         }
     }

@@ -988,6 +988,18 @@ int main(int argc, char* argv[])
 		FilterSoftwareVulkanICDs();
 		FilterPipeWireOpenAL();
 
+#if defined(__ANDROID__)
+		// GeneralsX @feature Claude 02/08/2026 App-bundled Mesa Turnip Vulkan driver. Must run
+		// BEFORE SDL_Vulkan_LoadLibrary / DXVK init: loads Turnip via libadrenotools and routes
+		// SDL3 + DXVK through libvulkan_bridge.so so the game avoids the stock Qualcomm HAL
+		// (whose allocator bug crashes DXVK, reliably under mod load). No-op when the bundled
+		// driver is unavailable (keeps the system Vulkan).
+		extern bool AdrenoToolsInitVulkanDriver();
+		if (AdrenoToolsInitVulkanDriver()) {
+			__android_log_print(ANDROID_LOG_INFO, "GeneralsX", "Vulkan: app-bundled Turnip driver active");
+		}
+#endif
+
 		// Load Vulkan library for DXVK DirectX8→Vulkan translation
 		fprintf(stderr, "INFO: Loading Vulkan library...\n");
 		if (!SDL_Vulkan_LoadLibrary(nullptr)) {

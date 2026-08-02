@@ -99,8 +99,8 @@ copy_if_exists() {
 }
 
 # DXVK d3d8 + d3d9 (built by the CMake dxvk_android_build ExternalProject).
-copy_if_exists "${BUILD_DIR}/libdxvk_d3d8.so"   "libdxvk_d3d8.so"
-copy_if_exists "${BUILD_DIR}/libdxvk_d3d9.so"   "libdxvk_d3d9.so"
+copy_if_exists "${BUILD_DIR}/_deps/dxvk-build-android/src/d3d8/libdxvk_d3d8.so" "libdxvk_d3d8.so"
+copy_if_exists "${BUILD_DIR}/_deps/dxvk-build-android/src/d3d9/libdxvk_d3d9.so" "libdxvk_d3d9.so"
 # SDL3 + SDL3_image (FetchContent build).
 copy_if_exists "${BUILD_DIR}/_deps/sdl3-build/libSDL3.so"        "libSDL3.so"
 copy_if_exists "${BUILD_DIR}/_deps/sdl3_image-build/libSDL3_image.so" "libSDL3_image.so"
@@ -128,6 +128,26 @@ elif [[ ! -f "${JNI_LIBS}/libmain.so" ]]; then
     echo "WARNING: libmain.so not found at ${ENGINE_MAIN} — the APK will have no engine"
 fi
 
+# ---- 3c. Stage AdrenoTools hook + bridge libs (app-bundled Turnip driver) -----
+# libmain_hook.so / libhook_impl.so must live in ApplicationInfo.nativeLibraryDir
+# (libadrenotools requirement); libvulkan_bridge.so is dlopen'd by both SDL3
+# (SDL_HINT_VULKAN_LIBRARY) and DXVK (GX_VULKAN_LIBRARY) to route through Turnip.
+# They are built by the CMake engine build into the AdrenoTools build dirs.
+AD_RT="${BUILD_DIR}/GeneralsMD/Code/GameEngineDevice/Source/AdrenoTools"
+copy_if_exists "${AD_RT}/adrenotools/src/hook/libmain_hook.so" "libmain_hook.so"
+copy_if_exists "${AD_RT}/adrenotools/src/hook/libhook_impl.so" "libhook_impl.so"
+copy_if_exists "${AD_RT}/libvulkan_bridge.so" "libvulkan_bridge.so"
+# Turnip driver (AdrenoToolsDrivers format) — extracted to the internal files dir
+# at first run by AdrenoToolsInitVulkanDriver. Shipped in assets (not jniLibs)
+# because dlopen of it happens from the internal dir, and assets keep the APK
+# structure simple. Falls back to the system Vulkan if absent.
+TURNIP_ZIP="${REPO_ROOT}/android/app/src/main/assets/turnip/libvulkan_freedreno.so"
+if [[ -f "${TURNIP_ZIP}" ]]; then
+    echo "    staged Turnip driver in assets (present)"
+else
+    echo "WARNING: assets/turnip/libvulkan_freedreno.so not found — game will use the system Vulkan driver"
+fi
+
 # ---- 3b. Verify the full runtime library set is present -----------------------
 # The engine dlopens all of these at startup; a missing one crashes on launch
 # with "dlopen failed: library X not found". Assert before building the APK.
@@ -135,6 +155,7 @@ REQUIRED_LIBS=(
     libdxvk_d3d8.so libdxvk_d3d9.so libSDL3.so libSDL3_image.so
     libopenal.so libfreetype.so libglm.so libgamespy.so
     libc++_shared.so libmain.so
+    libmain_hook.so libhook_impl.so libvulkan_bridge.so
 )
 MISSING=()
 for lib in "${REQUIRED_LIBS[@]}"; do
@@ -153,12 +174,23 @@ mkdir -p "${ASSETS}"
 cp -f "${ANDROID_DIR}/config/dxvk.conf" "${ASSETS}/dxvk.conf"
 mkdir -p "${ASSETS}/fonts"
 cp -f "${HOME}/GeneralsX/android-staging/fonts/"*.ttf "${ASSETS}/fonts/"
-
 # GeneralsX @bugfix android-port 30/07/2026 Bundle the fixed ModPickerMenu.wnd as an APK
 # asset. SDL3Main.cpp extracts it over the app-owned GameData copy on every launch to
 # repair installs whose malformed "STARTALLCHILDREN" token SIGSEGVs the Mods picker.
 mkdir -p "${ASSETS}/Window/Menus"
 cp -f "${REPO_ROOT}/GeneralsZH/Data/Window/Menus/ModPickerMenu.wnd" "${ASSETS}/Window/Menus/ModPickerMenu.wnd"
+
+# GeneralsX @feature Claude 02/08/2026 Bundle the Mesa Turnip Vulkan driver for the
+# app-bundled Turnip path. The engine extracts it from assets to the internal files
+# dir at first run and loads it via libadrenotools. Optional: without it the game
+# falls back to the system Vulkan (stock Qualcomm HAL). The driver lives directly in
+# android/app/src/main/assets/turnip/ (the same dir Gradle packages as APK assets),
+# so no copy is needed — just verify it is present.
+if [[ -f "${REPO_ROOT}/android/app/src/main/assets/turnip/libvulkan_freedreno.so" ]]; then
+    echo "    Turnip driver present in assets/turnip/"
+else
+    echo "WARNING: no assets/turnip/libvulkan_freedreno.so — system Vulkan will be used"
+fi
 
 # ---- 5. Gradle assembleRelease ------------------------------------------------
 echo "==> Building APK (./gradlew assembleRelease)"
