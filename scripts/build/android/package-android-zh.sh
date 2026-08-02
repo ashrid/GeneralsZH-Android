@@ -183,35 +183,10 @@ cp -f "${REPO_ROOT}/GeneralsZH/Data/Window/Menus/ModPickerMenu.wnd" "${ASSETS}/W
 # GeneralsX @feature Claude 02/08/2026 Bundle the Mesa Turnip Vulkan driver for the
 # app-bundled Turnip path. The engine extracts it from assets to the internal files
 # dir at first run and loads it via libadrenotools. The driver is a pure drop-in .so
-# (meta.json is never read by the engine), so it is released separately and fetched
-# here when absent — the repo stays lean and a newer driver can be shipped without
-# touching the APK. Without it the game falls back to the system Vulkan.
+# (meta.json is never read by the engine) and is tracked in the repo so builds are
+# self-contained — no build-time download, no external dependency to maintain. To
+# upgrade the driver, replace this .so with a newer Turnip build (keep the name).
 TURNIP_SO="${REPO_ROOT}/android/app/src/main/assets/turnip/libvulkan_freedreno.so"
-TURNIP_DRIVER_URL="https://github.com/ashrid/dxvk/releases/download/turnip-driver-v33/Turnip_Gen8_V33.zip"
-TURNIP_DRIVER_SHA256="b8b67b04c1ba1e5243faa693eaed813da24f3203c2b11b52664dec00c5e66f43"
-if [[ ! -f "${TURNIP_SO}" ]]; then
-    echo "==> Fetching Mesa Turnip driver (${TURNIP_DRIVER_URL})"
-    TURNIP_TMP="$(mktemp -d)"
-    if ! curl -fsSL -o "${TURNIP_TMP}/turnip.zip" "${TURNIP_DRIVER_URL}"; then
-        echo "WARNING: could not download Turnip driver — system Vulkan will be used"
-        rm -rf "${TURNIP_TMP}"
-    else
-        ACTUAL_SHA="$(sha256sum "${TURNIP_TMP}/turnip.zip" | cut -d' ' -f1)"
-        if [[ "${ACTUAL_SHA}" != "${TURNIP_DRIVER_SHA256}" ]]; then
-            echo "ERROR: Turnip driver SHA256 mismatch (got ${ACTUAL_SHA}, want ${TURNIP_DRIVER_SHA256})"
-            rm -rf "${TURNIP_TMP}"
-            exit 1
-        fi
-        mkdir -p "${REPO_ROOT}/android/app/src/main/assets/turnip"
-        if ! unzip -o -q "${TURNIP_TMP}/turnip.zip" libvulkan_freedreno.so -d "${REPO_ROOT}/android/app/src/main/assets/turnip/"; then
-            echo "WARNING: could not extract Turnip driver from zip — system Vulkan will be used"
-            rm -rf "${TURNIP_TMP}"
-        else
-            echo "    staged Turnip driver (SHA256 verified)"
-            rm -rf "${TURNIP_TMP}"
-        fi
-    fi
-fi
 if [[ -f "${TURNIP_SO}" ]]; then
     echo "    Turnip driver present in assets/turnip/"
 else
