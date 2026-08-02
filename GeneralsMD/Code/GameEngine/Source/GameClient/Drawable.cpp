@@ -2732,9 +2732,17 @@ static Bool computeHealthRegion( const Drawable *draw, IRegion2D& region )
 	healthBoxWidth *= widthScale;
 	healthBoxHeight *= heightScale;
 
+	// GeneralsX @bugfix Claude 02/08/2026 Scale the in-world 2D icon UI (health bars,
+	// captions, veterancy, ammo) by the display height relative to the 600px design
+	// baseline. At native high-DPI resolutions (e.g. 1904px tall) the hardcoded 3px
+	// health bar was invisible; this keeps it proportionally sized like the rest of
+	// the resolution-aware UI. Capped at 4x so it never overgrows on very tall panels.
+	const Real uiScale = min(4.0f, TheDisplay->getHeight() / (Real)DEFAULT_DISPLAY_HEIGHT);
+
 	// do this so health bar doesn't get too skinny or fat after scaling
 	//healthBoxHeight = max(3.0f, healthBoxHeight);
-	healthBoxHeight = 3.0f;
+	healthBoxHeight = 3.0f * uiScale;
+	healthBoxWidth *= uiScale;
 
 	// figure out the final region for the health box
 	region.lo.x = screenCenter.x - healthBoxWidth * 0.45f;
@@ -2786,7 +2794,6 @@ void Drawable::drawIconUI()
 		const IRegion2D* healthBarRegion = nullptr;
 		if (computeHealthRegion(this, healthBarRegionStorage))
 			healthBarRegion = &healthBarRegionStorage; //both data and a PointerAsFlag for logic in the methods below
-
 		Object *obj = getObject();
 
 		// we only draw icons drawables with objects, so one bail here -------------------------
