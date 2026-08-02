@@ -14,10 +14,12 @@
 // (Linux) StdLocalFileSystem.o is never pulled — so doesFileExist/openFile here run the genuine
 // __ANDROID__ code path. No directory_iterator is ever invoked.
 //
-// Three independent Given/When/Then cases:
+// Given/When/Then cases:
 //   mod root only     -> doesFileExist succeeds (the regression)
 //   file absent       -> doesFileExist fails (no false positives)
 //   primary + mod     -> openFile reads the PRIMARY root content (precedence preserved)
+//   loose subdir INI  -> getFileListInDirectory lists a mod-root subdirectory file
+//   (VFX gap)           (ParticleSystem/FXList subdir INIs must be discoverable)
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <Utility/CppMacros.h>
 
@@ -135,6 +137,50 @@ TEST_CASE("Android loose mod fallback: absent file is not falsely reported prese
 	// When: Android-style lookup for a file present nowhere.
 	// Then: it is not found (the fallback fix must not introduce false positives).
 	REQUIRE_FALSE(fsdev.doesFileExist("Data/INI/DoesNotExist.ini"));
+}
+
+TEST_CASE("Android loose mod fallback: getFileListInDirectory lists loose subdirectory INI from mod root")
+{
+	// Given: cwd has no Data/ subtree; a mod root registered via setAssetFallbackPaths holds a
+	// loose subdirectory INI (Data/INI/ParticleSystem/XenoVFX.ini) plus one nested one level
+	// deeper (Data/INI/ParticleSystem/Nested/Deeper.ini). This is the exact shape
+	// ParticleSystemManager::init() -> INI::loadFileDirectory -> loadDirectory() discovers via
+	// getFileListInDirectory (which the engine calls with subdirs=TRUE); a mod's
+	// ParticleSystem/FXList subdirectory INIs are only visible to VFX loading if this call can
+	// see them.
+	ensureMemInit();
+	AndroidFallbackWorkspace ws;
+	ws.prevCwd = std::filesystem::current_path();
+	ws.cleanCwd = uniqueTempDir("cwd_vfx");
+	ws.modRoot = uniqueTempDir("mod_vfx");
+	writeFile(ws.modRoot / "Data" / "INI" / "ParticleSystem" / "XenoVFX.ini", "ParticleSystem XenoVFX\n");
+	writeFile(ws.modRoot / "Data" / "INI" / "ParticleSystem" / "Nested" / "Deeper.ini", "ParticleSystem Deeper\n");
+	std::filesystem::current_path(ws.cleanCwd);
+
+	StdLocalFileSystem fsdev;
+	std::vector<AsciiString> modPaths;
+	modPaths.push_back(AsciiString(ws.modRoot.string().c_str()));
+	fsdev.setAssetFallbackPaths(modPaths);
+
+	// When: Android-style directory listing for the ParticleSystem INI folder, matching the
+	// engine's subdirs=TRUE call.
+	FilenameList filenameList;
+	fsdev.getFileListInDirectory(AsciiString::TheEmptyString,
+		AsciiString("Data/INI/ParticleSystem"), AsciiString("*.ini"),
+		filenameList, TRUE);
+
+	// Then: both the mod-root subdirectory INI and its nested file are listed (so
+	// ParticleSystemManager can load them). The mod fallback root must be probed for directory
+	// listings, exactly as fixFilenameFromWindowsPath probes it for single-file lookups.
+	bool foundTop = false;
+	bool foundNested = false;
+	for (FilenameList::const_iterator it = filenameList.begin(); it != filenameList.end(); ++it)
+	{
+		if (it->endsWithNoCase("XenoVFX.ini")) foundTop = true;
+		if (it->endsWithNoCase("Nested/Deeper.ini") || it->endsWithNoCase("Nested\\Deeper.ini")) foundNested = true;
+	}
+	REQUIRE(foundTop);
+	REQUIRE(foundNested);
 }
 
 TEST_CASE("Android loose mod fallback: primary asset root wins over mod root (precedence)")

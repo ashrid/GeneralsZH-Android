@@ -41,7 +41,9 @@
 // (basic_string::append) and corrupt the Scudo heap on device.
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
 #include <limits.h>
+#include <strings.h>
 #include <sys/stat.h>
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -99,6 +101,77 @@ static bool androidLooseFileHit(const char *root, const char *rel, Int access,
 		}
 	}
 	return false;
+}
+
+// GeneralsX @bugfix Claude 02/08/2026 Android loose-file DIRECTORY listing. Single-file lookups
+// (doesFileExist/openFile/getFileInfo) already probe the asset root + mod roots via
+// androidLooseFileHit, but getFileListInDirectory ran a raw cwd-relative directory_iterator, so
+// loose mod subdirectory INIs (Data/INI/ParticleSystem/*.ini, Data/INI/FXList/*.ini) were
+// invisible to INI::loadFileDirectory -> loadDirectory -> getFileListInDirectory. A mod's new
+// particle/FX definitions therefore never registered and its VFX silently vanished (release
+// builds store a null template in parseParticleSystemTemplate). Fixed buffers + POSIX
+// opendir/readdir/stat only, matching the allocation-free fallback contract above. Mirrors the
+// single-file precedence: asset root first, then each registered mod root.
+static void androidLooseDirListing(const char *root, const char *relDir, const char *searchExt,
+								   FilenameList &filenameList, Bool searchSubdirectories)
+{
+	if (root == nullptr || root[0] == '\0' || relDir == nullptr || relDir[0] == '\0')
+		return;
+
+	char probe[PATH_MAX];
+	const int len = std::snprintf(probe, sizeof(probe), "%s/%s", root, relDir);
+	if (len < 0 || static_cast<size_t>(len) >= sizeof(probe))
+		return;
+
+	DIR *dir = ::opendir(probe);
+	if (dir == nullptr)
+		return;
+
+	struct dirent *ent;
+	while ((ent = ::readdir(dir)) != nullptr)
+	{
+		if (std::strcmp(ent->d_name, ".") == 0 || std::strcmp(ent->d_name, "..") == 0)
+			continue;
+
+		char full[PATH_MAX];
+		const int flen = std::snprintf(full, sizeof(full), "%s/%s", probe, ent->d_name);
+		if (flen < 0 || static_cast<size_t>(flen) >= sizeof(full))
+			continue;
+
+		struct stat st;
+		if (::stat(full, &st) != 0)
+			continue;
+
+		if (S_ISDIR(st.st_mode))
+		{
+			if (searchSubdirectories)
+			{
+				char subRel[PATH_MAX];
+				const int slen = std::snprintf(subRel, sizeof(subRel), "%s/%s", relDir, ent->d_name);
+				if (slen < 0 || static_cast<size_t>(slen) >= sizeof(subRel))
+					continue;
+				androidLooseDirListing(root, subRel, searchExt, filenameList, searchSubdirectories);
+			}
+			continue;
+		}
+
+		if (searchExt != nullptr && searchExt[0] != '\0')
+		{
+			const char *dot = std::strrchr(ent->d_name, '.');
+			if (dot == nullptr || strcasecmp(dot, searchExt) != 0)
+				continue;
+		}
+
+		// Emit the logical path (relative to the probed root) so INI::loadDirectory strips the
+		// directory prefix the same way it does for archive-sourced entries.
+		char logical[PATH_MAX];
+		const int llen = std::snprintf(logical, sizeof(logical), "%s/%s", relDir, ent->d_name);
+		if (llen < 0 || static_cast<size_t>(llen) >= sizeof(logical))
+			continue;
+		filenameList.insert(AsciiString(logical));
+	}
+
+	::closedir(dir);
 }
 #endif
 
@@ -398,6 +471,29 @@ void StdLocalFileSystem::getFileListInDirectory(const AsciiString& currentDirect
 #ifndef _WIN32
 	// Replace backslashes with forward slashes on unix
 	std::replace(fixedDirectory.begin(), fixedDirectory.end(), '\\', '/');
+#endif
+
+#if defined(__ANDROID__)
+	// GeneralsX @bugfix Claude 02/08/2026 Probe the loose-file fallback roots (primary asset
+	// root then registered mod roots) for directory listings, mirroring the single-file
+	// precedence in fixFilenameFromWindowsPath. Without this, INI::loadFileDirectory ->
+	// loadDirectory -> getFileListInDirectory could not see loose mod subdirectory INIs
+	// (Data/INI/ParticleSystem/*.ini, Data/INI/FXList/*.ini) and mod VFX definitions never
+	// registered. The cwd-relative directory_iterator below is then still attempted (it is a
+	// no-op when the directory is not in cwd).
+	{
+		std::string searchExtStr = searchExt.string();
+		if (!s_assetFallbackPath.empty())
+		{
+			androidLooseDirListing(s_assetFallbackPath.c_str(), fixedDirectory.c_str(),
+								   searchExtStr.c_str(), filenameList, searchSubdirectories);
+		}
+		for (const auto &fb : s_assetFallbackPaths)
+		{
+			androidLooseDirListing(fb.c_str(), fixedDirectory.c_str(),
+								   searchExtStr.c_str(), filenameList, searchSubdirectories);
+		}
+	}
 #endif
 
 	Bool done = FALSE;
