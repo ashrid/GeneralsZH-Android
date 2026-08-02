@@ -1,6 +1,6 @@
 # Command & Conquer: Generals Zero Hour — Android
 
-<img src="assets/android-main-menu-mods-active.png" alt="Generals Zero Hour main menu with the Mods and 60 FPS buttons active" width="640">
+<img src="assets/android-hero.jpg" alt="Command & Conquer Generals Zero Hour official key art" width="640">
 
 **The complete 2003 RTS, running natively on Android — with features the stock port never had.**
 
@@ -96,6 +96,8 @@ from the actual retail `.big` assets.
 | Full gameplay session (skirmish) | ⚠️ boots & playable |
 
 **Tested on:** Lenovo TB322FC (Android 16, Adreno 830, 1904×3040) • OnePlus Pad 2 (Snapdragon 8 Gen 3, Adreno 830, 3392×2400)
+
+<img src="assets/android-gameplay.jpg" alt="Command & Conquer Generals Zero Hour gameplay" width="640">
 
 ---
 
