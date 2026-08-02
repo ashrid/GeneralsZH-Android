@@ -22,6 +22,11 @@ cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 *.so*
+# The bundled Mesa Turnip Vulkan driver is deliberately tracked despite the
+# *.so* rule: the engine ships it in APK assets so builds are self-contained
+# for non-technical users (no build-time download). A newer driver can still
+# be swapped via the packager's release-asset fetch (see package-android-zh.sh).
+!android/app/src/main/assets/turnip/libvulkan_freedreno.so
 CPackConfig.cmake
 CPackSourceConfig.cmake
 *.spec
