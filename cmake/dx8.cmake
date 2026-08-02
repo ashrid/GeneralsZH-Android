@@ -83,22 +83,31 @@ elseif(ANDROID)
 
   if(SAGE_DXVK_USE_LOCAL_FORK AND EXISTS "${DXVK_LOCAL_FORK_DIR}/.git")
     set(DXVK_SOURCE_DIR "${DXVK_LOCAL_FORK_DIR}")
-    # Apply the Android patch idempotently (same pattern as the iOS patch).
-    execute_process(
-      COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply --reverse --check "${CMAKE_SOURCE_DIR}/Patches/dxvk-android.patch"
-      RESULT_VARIABLE DXVK_PATCH_ALREADY_APPLIED
-      ERROR_QUIET)
-    if(NOT DXVK_PATCH_ALREADY_APPLIED EQUAL 0)
+    # Apply the Android patches idempotently (same pattern as the iOS patch).
+    # dxvk-android.patch: Android build + WSI fixes (meson cross, high-DPI SDL3).
+    # dxvk-vulkan-loader-seam.patch: GX_VULKAN_LIBRARY loader override for the
+    # app-bundled Mesa Turnip driver (Android-only). Kept as patches instead of a
+    # maintained DXVK fork so the submodule tracks upstream source directly.
+    set(DXVK_ANDROID_PATCHES
+      "${CMAKE_SOURCE_DIR}/Patches/dxvk-android.patch"
+      "${CMAKE_SOURCE_DIR}/Patches/dxvk-vulkan-loader-seam.patch")
+    foreach(DXVK_PATCH_FILE IN LISTS DXVK_ANDROID_PATCHES)
       execute_process(
-        COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply "${CMAKE_SOURCE_DIR}/Patches/dxvk-android.patch"
-        RESULT_VARIABLE DXVK_PATCH_RESULT)
-      if(NOT DXVK_PATCH_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to apply Patches/dxvk-android.patch to references/fbraz3-dxvk.")
+        COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply --reverse --check "${DXVK_PATCH_FILE}"
+        RESULT_VARIABLE DXVK_PATCH_ALREADY_APPLIED
+        ERROR_QUIET)
+      if(NOT DXVK_PATCH_ALREADY_APPLIED EQUAL 0)
+        execute_process(
+          COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply "${DXVK_PATCH_FILE}"
+          RESULT_VARIABLE DXVK_PATCH_RESULT)
+        if(NOT DXVK_PATCH_RESULT EQUAL 0)
+          message(FATAL_ERROR "Failed to apply ${DXVK_PATCH_FILE} to references/fbraz3-dxvk.")
+        endif()
+        message(STATUS "DXVK Android: applied ${DXVK_PATCH_FILE}")
+      else()
+        message(STATUS "DXVK Android: ${DXVK_PATCH_FILE} already applied")
       endif()
-      message(STATUS "DXVK Android: applied Patches/dxvk-android.patch")
-    else()
-      message(STATUS "DXVK Android: Patches/dxvk-android.patch already applied")
-    endif()
+    endforeach()
   else()
     message(FATAL_ERROR "Android DXVK requires the local fork submodule. Run: git submodule update --init --recursive references/fbraz3-dxvk")
   endif()

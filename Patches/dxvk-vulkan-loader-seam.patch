@@ -1,0 +1,53 @@
+From 2f5039ac18ec6aa02e4148ff4a12bce89f3e25ea Mon Sep 17 00:00:00 2001
+From: ashrid <force.bullet@gmail.com>
+Date: Sun, 2 Aug 2026 18:41:25 +0400
+Subject: [PATCH] feat(android): allow overriding the Vulkan loader via
+ GX_VULKAN_LIBRARY
+
+The stock Qualcomm Adreno Vulkan driver has a confirmed memory-allocator
+fault in DxvkMemoryAllocator::createAllocation during fixed-function
+constant-buffer allocation that crashes DXVK (reliably under mod load).
+Mesa Turnip handles the same path correctly. The engine loads Turnip
+per-app via libadrenotools and exports vkGetInstanceProcAddr through a
+bridge .so; on Android loadVulkanLibrary() now honors GX_VULKAN_LIBRARY
+(a bridge path) before falling back to the system libvulkan.so.
+---
+ src/vulkan/vulkan_loader.cpp | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/src/vulkan/vulkan_loader.cpp b/src/vulkan/vulkan_loader.cpp
+index 518efcb1..6514f643 100644
+--- a/src/vulkan/vulkan_loader.cpp
++++ b/src/vulkan/vulkan_loader.cpp
+@@ -10,6 +10,28 @@
+ namespace dxvk::vk {
+ 
+   static std::pair<HMODULE, PFN_vkGetInstanceProcAddr> loadVulkanLibrary() {
++#if defined(__ANDROID__)
++    // GeneralsX @feature Claude 02/08/2026 App-bundled Turnip: the engine loads the
++    // custom Mesa Turnip driver via libadrenotools and exports vkGetInstanceProcAddr
++    // through a bridge .so (libvulkan_bridge.so) that forwards to the AdrenoTools
++    // handle. The engine sets GX_VULKAN_LIBRARY to that bridge's absolute path
++    // before DXVK initializes, so DXVK must load the bridge instead of the system
++    // libvulkan.so (which selects the buggy stock Qualcomm HAL). Fall back to the
++    // system loader if the env var is unset (vanilla desktop builds).
++    if (const char* bridgePath = ::getenv("GX_VULKAN_LIBRARY"); bridgePath && bridgePath[0]) {
++      HMODULE bridge = LoadLibraryA(bridgePath);
++      if (bridge) {
++        auto proc = GetProcAddress(bridge, "vkGetInstanceProcAddr");
++        if (proc) {
++          Logger::info(str::format("Vulkan: Found vkGetInstanceProcAddr in ", bridgePath, " @ 0x", std::hex, reinterpret_cast<uintptr_t>(proc)));
++          return std::make_pair(bridge, reinterpret_cast<PFN_vkGetInstanceProcAddr>(proc));
++        }
++        FreeLibrary(bridge);
++      }
++      Logger::err(str::format("Vulkan: GX_VULKAN_LIBRARY set to ", bridgePath, " but load failed; falling back to system libvulkan"));
++    }
++#endif
++
+ #ifdef _WIN32
+     static const std::array<const char*, 2> dllNames = {{
+       "winevulkan.dll",
+-- 
+2.43.0
+
